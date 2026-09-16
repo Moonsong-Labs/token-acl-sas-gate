@@ -1,0 +1,44 @@
+minimum_prek_version: "0.4.14"
+default_install_hook_types: [pre-commit, pre-push]
+default_stages: [pre-commit, pre-push]
+fail_fast: true
+
+repos:
+  - repo: local
+    hooks:
+      - id: rustfmt
+        name: Rust formatting
+        entry: mise exec -- cargo fmt --all -- --check
+        language: system
+        pass_filenames: false
+        always_run: true
+        require_serial: true
+      - id: clippy
+        name: Clippy (all targets and features, deny warnings)
+        entry: mise exec -- cargo clippy --locked --all-targets --all-features -- -D warnings
+        language: system
+        pass_filenames: false
+        always_run: true
+        require_serial: true
+      - id: tests
+        name: Tests (default entrypoint)
+        entry: mise exec -- cargo test --locked
+        language: system
+        pass_filenames: false
+        always_run: true
+        require_serial: true
+      - id: tests-no-entrypoint
+        name: Tests (no entrypoint)
+        entry: mise exec -- cargo test --locked --features no-entrypoint
+        language: system
+        pass_filenames: false
+        always_run: true
+        require_serial: true
+      - id: e2e
+        name: SBF build and local-validator E2E
+        entry: mise exec -- cargo test --locked --test e2e -- --ignored --nocapture
+        language: system
+        stages: [pre-push]
+        pass_filenames: false
+        always_run: true
+        require_serial: true

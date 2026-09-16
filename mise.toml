@@ -1,0 +1,62 @@
+min_version = "2026.9.3"
+
+[tools]
+prek = "0.4.14"
+
+[tools."github:anza-xyz/agave"]
+# This release bundles solana, solana-test-validator, and cargo-build-sbf 4.0.0.
+version = "4.0.2"
+strip_components = 1
+bin_path = "bin"
+# Fail installation on unsupported hosts rather than selecting an installer.
+asset_pattern = "unsupported-platform-use-macos-arm64-or-linux-x64"
+
+[tools."github:anza-xyz/agave".platforms.macos-arm64]
+asset_pattern = "solana-release-aarch64-apple-darwin.tar.bz2"
+checksum = "sha256:ca81c0e8d8edf56d08bd347da3d449f76b7d6cbe67d5ac582832bab51b1d53b2"
+
+[tools."github:anza-xyz/agave".platforms.linux-x64]
+asset_pattern = "solana-release-x86_64-unknown-linux-gnu.tar.bz2"
+checksum = "sha256:ec92ded45536d82c737b4df70404bbc052ec1711773ecb56a240c11d0d71937a"
+
+[tools.rust]
+# Keep Rust last: its Cargo bin directory may contain older copies of our other
+# tools. The dedicated mise installs above must take precedence on PATH.
+version = "1.89.0"
+profile = "minimal"
+components = ["rustfmt", "clippy"]
+
+[env]
+# The host Rust compiler and Solana's SBF compiler are separate toolchains.
+SBF_TOOLS_VERSION = "v1.53"
+# On macOS, explicitly select the SDK paired with the active Xcode toolchain.
+# This avoids mixing a newer Command Line Tools SDK with an older Xcode linker.
+_.source = "scripts/mise-env.sh"
+
+[tasks.setup]
+description = "Prepare the SBF toolchain and install Git hooks"
+run = [
+    'cargo build-sbf --tools-version "$SBF_TOOLS_VERSION" --install-only',
+    "prek validate-config .pre-commit-config.yaml",
+    "prek install --hook-type pre-commit --hook-type pre-push",
+]
+
+[tasks.fmt]
+description = "Format Rust sources (review the resulting diff)"
+run = "cargo fmt --all"
+
+[tasks.check]
+description = "Run the commit gates: formatting, Clippy, and both test configurations"
+run = "prek run --all-files"
+
+[tasks.verify]
+description = "Run all push gates, including the SBF build and local-validator E2E"
+run = "prek run --all-files --stage pre-push"
+
+[tasks.build]
+description = "Build target/deploy/doors_of_durin.so with the pinned SBF toolchain"
+run = 'cargo build-sbf --tools-version "$SBF_TOOLS_VERSION" -- --locked'
+
+[tasks.e2e]
+description = "Run the local-validator smoke test (downloads SAS unless SAS_PROGRAM_SO is set)"
+run = "cargo test --locked --test e2e -- --ignored --nocapture"

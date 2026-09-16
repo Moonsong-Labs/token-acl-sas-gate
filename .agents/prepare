@@ -1,0 +1,12 @@
+#!/bin/sh
+# Delta runs this in each new managed checkout.
+set -eu
+
+cd "$(dirname "$0")/.."
+if ! command -v mise >/dev/null 2>&1; then
+    echo "Install mise, review and trust mise.toml, then rerun .agents/prepare (see CONTRIBUTING.md)." >&2
+    exit 1
+fi
+
+mise install
+mise run setup
