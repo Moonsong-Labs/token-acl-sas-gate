@@ -1,0 +1,18 @@
+[package]
+name = "penguin"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.89"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[features]
+no-entrypoint = []
+
+[dependencies]
+pinocchio = "0.11.2"
+
+[lints.rust]
+# Pinocchio's entrypoint macros use Solana's custom target OS.
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }
