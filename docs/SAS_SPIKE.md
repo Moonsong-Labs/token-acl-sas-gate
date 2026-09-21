@@ -6,7 +6,9 @@ SAS source; assumptions and gaps are labelled.
 
 **Method.** The SAS source was cloned and read at the pinned commit below; the Rust
 client crate, on-chain program, and the project's own integration tests were the
-primary sources. Nothing here was taken from public docs or memory.
+primary sources. Nothing here was taken from public docs or memory. The live probe, though,
+validates against the **deployed mainnet** SAS binary, not a build of the pinned commit — see
+the §5 provenance caveat.
 
 ---
 
@@ -44,7 +46,7 @@ prefix; all integers are little-endian.
 | 65 | 32 | schema | Pubkey | schema ref |
 | 97 | 4 | data_len | u32 LE | `= L` |
 | 101 | L | **data** | bytes | claim, schema-encoded (§5) |
-| 101+L | 32 | **signer** | Pubkey | authorized signer that attested (issuer identity) |
+| 101+L | 32 | **signer** | Pubkey | the credential-authorized signer that created it (one of the credential's `authorized_signers`) — **not** "the issuer"; issuer identity is decided in §4 |
 | 133+L | 8 | **expiry** | i64 LE | Unix seconds; `0` = never |
 | 141+L | 32 | token_account | Pubkey | asset restriction: binds the attestation to a specific token account (tokenized attestations); all-zeros (default) = not asset-restricted. **Not** the subject — see §7 |
 
@@ -79,11 +81,16 @@ is emitted as a log only. → **For a reader, the presence of a valid account is
 signal; absence (owner = System, empty data) is the revocation.** `change_schema_status`
 (`is_paused`) blocks *new* issuance only; it does **not** invalidate existing attestations.
 
-**Renewal / reissuance (§3.4 — resolves §9.1/§9.2).** **No renew instruction.** Renewal =
-create a new attestation with a new `nonce` → new PDA. Prior evidence is invalidated only
-by explicitly closing that specific attestation. Granularity: **per-attestation-instance
-only.** No per-subject or per-claim native revocation. → **Reissuance does not supersede
-prior evidence automatically**; our design must decide what remains valid.
+**Renewal / reissuance (§3.4 — resolves §9.1/§9.2).** **No renew instruction.** In SAS
+generally, two coexisting attestations need different `nonce`s (the PDA is `(credential,
+schema, nonce)`). **But under our `nonce = subject` binding (§7) the subject fixes the nonce,
+so there is exactly one attestation address per subject** — a "new nonce" renewal would break
+binding. Renewal is therefore **close the subject's attestation, then recreate it at the same
+`PDA(credential, schema, subject)`** with fresh expiry/data (closing frees the address; SAS
+re-inits it). Prior evidence is invalidated only by explicitly closing it; granularity is
+**per-attestation-instance only** (no per-subject/per-claim native revocation). → **Reissuance
+does not supersede prior evidence automatically**, and the renewal path is close-then-recreate
+— the step-5 lifecycle build owns this.
 
 **Claim data (§3.7).** `data` is a flat concatenation of LE-packed field values in
 `layout` order, with no self-describing tags — decoding requires the schema. `layout` is a
@@ -115,6 +122,14 @@ Recommended additional hardening for our gate: recompute the attestation PDA fro
 ourselves (§3). To validate the claim conforms, load the `schema` account
 (`owner == SAS`, `data[0] == 1`) and decode per §5's rules.
 
+**Issuer identity (for the step-4 allowlist) is *not* `signer`.** The attestation's `signer`
+is whichever credential-authorized signer created it, and that set can rotate
+(`ChangeAuthorizedSigners`). The stable issuer identity is the **credential** — its PDA (or
+its `authority`). The allowlist (predicate item 6) must key on the credential, not `signer`,
+or signer rotation/delegation would silently change policy identity. Our fixture used the
+credential authority as its sole signer, which masks this distinction — step-4 fixtures must
+separate them.
+
 ---
 
 ## 5. Verification model & measured cost
@@ -132,6 +147,13 @@ field-by-field on the issued values.
 **On-chain decode CU is still TODO** — it can only be measured once the actual gate
 program decodes during a thaw callback; the spike decoder runs host-side in the test.
 Deferred to the UC1 build (step 3).
+
+**Provenance caveat (reproducibility).** §2–§4 are read from source at `5b64cf0`, but the
+probe loads the **currently-deployed mainnet** SAS binary (`tests/support/mod.rs` downloads it
+unless `SAS_PROGRAM_SO` is set), which is **not** pinned to `5b64cf0`. The two agreed at run
+time, but a mainnet upgrade could diverge. For reproducible runs, set `SAS_PROGRAM_SO` to a
+**checksum-pinned** binary; building `5b64cf0` into a loadable `.so` (its own toolchain /
+pinocchio fork) is a follow-up.
 
 ---
 
@@ -178,6 +200,11 @@ address — the gate re-derives that address rather than trusting the account it
 `nonce == subject`; it is a convention. The allowlisted issuer **must set `nonce` = the
 investor's wallet** at issuance. (Our probe test used a random `nonce` because it was not
 exercising the binding — step-3 fixtures must set `nonce = subject`.)
+
+**Renewal under this binding.** Because the subject fixes the nonce, there is at most one live
+attestation per subject per (credential, schema): renewal is **close the old attestation, then
+recreate at the same `PDA(credential, schema, subject)`** with new expiry/data — not a fresh
+nonce (§3). The step-5 lifecycle build owns this.
 
 **`token_account` is a different property — not the subject.** The attestation's
 `token_account` field is an **asset restriction**: it scopes a (tokenized) attestation to a

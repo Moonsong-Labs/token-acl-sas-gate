@@ -60,3 +60,7 @@ run = 'cargo build-sbf --tools-version "$SBF_TOOLS_VERSION" -- --locked'
 [tasks.e2e]
 description = "Run the local-validator smoke test (downloads SAS unless SAS_PROGRAM_SO is set)"
 run = "cargo test --locked --test e2e -- --ignored --nocapture"
+
+[tasks.spike]
+description = "Run the SAS spike probe against a local validator (downloads SAS unless SAS_PROGRAM_SO is set)"
+run = "cargo test --locked --test spike_sas -- --ignored --nocapture"

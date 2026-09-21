@@ -78,10 +78,13 @@ These checks also run at pre-push, alongside:
 
 ```sh
 cargo test --locked --test e2e -- --ignored --nocapture
+cargo test --locked --test spike_sas -- --ignored --nocapture
 ```
 
 The ignored E2E test builds the SBF program with `-- --locked` and runs a local
-validator; host tests alone do not exercise it. It downloads SAS from mainnet
+validator; host tests alone do not exercise it. The SAS spike probe (`mise run
+spike`) issues a credential/schema/attestation and checks the decoder and
+lifecycle against the same validator. Both download SAS from mainnet
 unless `SAS_PROGRAM_SO` points to an existing, known SAS program binary.
 Set that environment variable before running the gates to avoid the SAS
 download (other missing dependencies or toolchains may still require network
