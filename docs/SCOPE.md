@@ -33,7 +33,9 @@ fixture, build order, risks) and the business rationale in `USE_CASES.md`.
   must belong to the **target account's owner** — which requires the **`ImmutableOwner`**
   extension, since checking the current owner alone does not prevent a later reassignment
   (`IMPLEMENTATION.md` §4). Owner-consent signing would be a further product decision; nothing
-  here assumes it.
+  here assumes it. **Mechanism (spike):** SAS has no `subject` field, so the subject is the
+  attestation's `nonce` (issuer sets `nonce = subject wallet`); `token_account` is a separate
+  asset-restriction field. See `IMPLEMENTATION.md` §4.3 / `SAS_SPIKE.md` §7.
 
 **Two denial conditions — semantically separate, not necessarily both stored.**
 
@@ -95,6 +97,7 @@ limits are specified · **DEX integration (post-MVP milestone)**.
 - **No additional gate invocation occurs during transfers between thawed accounts.** No
   composability claim is made beyond that sentence; named-DEX integration is deferred.
 
-**Risks.** The pinned-version spike resolves the **version and lifecycle questions** and measures
-feasibility; **authority correctness** is established by implementation and testing, not by the
-spike. Highest items: `IMPLEMENTATION.md` §9.
+**Risks.** The SAS spike is **done** — it resolved the **SAS version and lifecycle questions**
+(layout, expiry, revocation-by-closure, no native supersession) and measured account size. The
+**Token ACL** spike and **authority correctness** remain — the latter established by
+implementation and testing, not by the spike. Highest items: `IMPLEMENTATION.md` §9.

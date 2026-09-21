@@ -15,6 +15,8 @@ use std::{
 };
 use tempfile::TempDir;
 
+pub mod sas;
+
 pub const SAS_PROGRAM_ID: Pubkey =
     solana_sdk::pubkey!("22zoJMtdu4tQc2PzL74ZUT7FrwgB1Udec8DdW4yw4BdG");
 const POLL_INTERVAL: Duration = Duration::from_millis(250);
@@ -25,6 +27,8 @@ const WAIT_TIMEOUT: Duration = Duration::from_secs(60);
 pub struct LocalValidator {
     pub rpc: RpcClient,
     pub payer: Keypair,
+    // Read by the e2e crate but not the spike_sas crate; both share this module.
+    #[allow(dead_code)]
     pub doors_of_durin_id: Pubkey,
     process: Child,
     directory: Option<TempDir>,

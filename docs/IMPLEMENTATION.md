@@ -21,9 +21,9 @@ Record the verified combination here and treat it as the single source of truth:
 | Item | Value (fill in and pin) |
 | --- | --- |
 | Token ACL version / commit |  |
-| SAS version / commit |  |
+| SAS version / commit | `5b64cf0` (default branch; no release tags) — see `SAS_SPIKE.md` §1 |
 | Token ACL program IDs (devnet / mainnet) |  |
-| SAS program IDs (devnet / mainnet) |  |
+| SAS program IDs (devnet / mainnet) | `22zoJMtdu4tQc2PzL74ZUT7FrwgB1Udec8DdW4yw4BdG` (same on both) |
 | Our gate program ID (devnet / mainnet) |  |
 | Target cluster per milestone |  |
 | Rust / `cargo-build-sbf` / SDK crate versions |  |
@@ -90,6 +90,14 @@ account as an absent policy.**
 
 ## 3. SAS spike — questions to settle before building eligibility
 
+> **Spike status: DONE** (SAS pinned at commit `5b64cf0`). Items 1–4 below are resolved; full
+> findings, byte layouts, and a live probe are in `SAS_SPIKE.md`. Key results: **SAS has no
+> `subject` field** — the subject is carried in the attestation's `nonce` (issuer convention),
+> and `token_account` is a separate asset-restriction field (items 1–2); **revocation = account
+> closure** with no flag or tombstone (item 3); and there is **no renewal instruction** —
+> renewal is a new attestation under a new nonce, and reissuance does not auto-supersede
+> (item 4). Freshness (item 5) and provider support (item 6) stay open for step 4.
+
 Public SAS documentation already shows an example with an **explicit** `expiry` and  
 **schema-serialized attestation** `data`. Expiry and schema-defined data are therefore not  
 open questions; what remains version-specific:
@@ -123,7 +131,9 @@ open questions; what remains version-specific:
 **Time units.** The public SAS example uses a **Unix timestamp in seconds**. Compare expiry with  
 `Clock.unix_timestamp` (seconds) — **not** with slot numbers. Confirm the pinned version's  
 comparison boundary (`>` vs `>=` at expiry == now) and any **sentinel value meaning "does not  
-expire"**.
+expire"**. **Resolved (spike):** `expiry` is `i64` Unix seconds; `0` = never expires; SAS checks
+expiry **only at creation** (`< now`), so the gate must enforce `expiry == 0 || now < expiry`
+itself at thaw time.
 **Verification model.** Do not assume a CPI into SAS is required. The gate can validate a  
 supplied SAS account by **reading and decoding it** — verifying the owning program is the pinned  
 SAS program, checking identity and account relationships — because Solana's account-ownership  
@@ -146,7 +156,11 @@ Allow thaw iff **all** hold:
     account carries the `ImmutableOwner` extension. Verifying the current owner alone does  
     **not** prevent a later owner change; `ImmutableOwner` is specifically what prevents  
     reassignment. ATAs get `ImmutableOwner` automatically; separately created accounts need  
-    explicit handling.
+    explicit handling. **Mechanism (spike):** SAS attestations have **no dedicated `subject`
+    field**, so the subject is the attestation's **`nonce`** — the gate checks
+    `attestation.nonce == current owner`, and the allowlisted issuer must set `nonce = subject
+    wallet` at issuance. `token_account` is a separate asset-restriction field, not the subject.
+    See `SAS_SPIKE.md` §7.
     
 4.  **Validity in time** — within the attestation's explicit `expiry` (Unix seconds vs  
     `Clock.unix_timestamp`) **and** within any additional policy freshness limit measured from the  
@@ -295,6 +309,8 @@ different regulatory questions and are not interchangeable evidence.
 1.  **Spike.** Inspect the pinned SAS and Token ACL versions for field layout, encodings,  
     expiry units and boundary, revocation/closure semantics, and renewal/reissuance behaviour;  
     record measured decode costs. Findings are labelled as findings, assumptions as assumptions.
+    **Status: the SAS half is DONE** — see `SAS_SPIKE.md` (layout, lifecycle, decoder + live
+    probe). The Token ACL layout/interface half is still to spike.
     
 2.  **Plumbing stub.** Mint + `create-config` + our extra-metas setup + enable permissionless  
     thaw, with a **permissive stub gate** that accepts a marker. Labelled a stub: it proves  
@@ -346,7 +362,12 @@ integration is a post-MVP milestone, not an MVP acceptance criterion.**
     Native SAS revocation and adapter-published invalidation are different mechanisms. Decide  
     invalidation **granularity** in the spike: if adapter-published invalidation is effectively a  
     **permanent wallet-level marker**, renewal will **not** restore access as documented, and the  
-    restoration story must be revised.
+    restoration story must be revised. **Resolved (spike):** native SAS revocation is **account
+    closure** — no status flag, no tombstone, and **no native per-subject/per-claim
+    invalidation**; renewal is a new attestation under a new nonce and does **not** auto-supersede.
+    Any per-subject/per-claim invalidation and supersession rule is therefore **ours** to build
+    (adapter-published records), per `SAS_SPIKE.md` §3. The native mechanism is no longer the
+    risk; the design of our invalidation records is.
     
 2.  **Supersession design gap.** Reissuance does not by itself supersede prior evidence. Without  
     an explicit rule, a revoked or stale attestation can remain valid — or a valid renewal can be  
@@ -354,7 +375,10 @@ integration is a post-MVP milestone, not an MVP acceptance criterion.**
     
 3.  **Resource usage of resolving and decoding evidence during thaw.** Read-and-decode is likely  
     sufficient (account ownership protects the state) but unmeasured: CU, instruction size,  
-    account data size, extra-metas loading cost.
+    account data size, extra-metas loading cost. **Partly resolved (spike):** read-and-decode
+    confirmed (owner + discriminator); attestation **account size = 179 bytes** for a one-field
+    claim (`173 + data_len`). On-chain **decode CU, instruction size, and extra-metas loading
+    cost** remain unmeasured until the gate program exists.
     
 4.  **Version drift.** Token ACL gate modes differ between guide and repo (`AllowAllEoas` is  
     described in the guide while the current repo documents only `Allow` and `Block`); "accredited"  

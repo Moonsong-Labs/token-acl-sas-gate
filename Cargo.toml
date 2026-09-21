@@ -14,6 +14,10 @@ no-entrypoint = []
 pinocchio = "0.11.2"
 
 [dev-dependencies]
+# SAS spike: issue attestations from the probe test via the first-party client
+# crate, and decode them with borsh where convenient. Pinned per docs/SAS_SPIKE.md.
+borsh = "1"
+solana-attestation-service-client = "1.0.9"
 solana-rpc-client = "2.3.13"
 solana-sdk = "2.3.1"
 tempfile = "3"
