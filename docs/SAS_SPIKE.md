@@ -153,7 +153,8 @@ probe loads the **currently-deployed mainnet** SAS binary (`tests/support/mod.rs
 unless `SAS_PROGRAM_SO` is set), which is **not** pinned to `5b64cf0`. The two agreed at run
 time, but a mainnet upgrade could diverge. For reproducible runs, set `SAS_PROGRAM_SO` to a
 **checksum-pinned** binary; building `5b64cf0` into a loadable `.so` (its own toolchain /
-pinocchio fork) is a follow-up.
+pinocchio fork) is a follow-up. Because of this the probe is an **opt-in** `mise run spike`
+task, not a required push gate, until a pinnable SAS release (or checksum-pinned binary) exists.
 
 ---
 

@@ -95,7 +95,8 @@ account as an absent policy.**
 > `subject` field** — the subject is carried in the attestation's `nonce` (issuer convention),
 > and `token_account` is a separate asset-restriction field (items 1–2); **revocation = account
 > closure** with no flag or tombstone (item 3); and there is **no renewal instruction** —
-> renewal is a new attestation under a new nonce, and reissuance does not auto-supersede
+> renewal is **close the attestation and recreate it at the same** `PDA(credential, schema, subject)`
+> (the subject fixes the nonce, §4.3), and reissuance does not auto-supersede
 > (item 4). Freshness (item 5) and provider support (item 6) stay open for step 4.
 
 Public SAS documentation already shows an example with an **explicit** `expiry` and  
@@ -364,7 +365,8 @@ integration is a post-MVP milestone, not an MVP acceptance criterion.**
     **permanent wallet-level marker**, renewal will **not** restore access as documented, and the  
     restoration story must be revised. **Resolved (spike):** native SAS revocation is **account
     closure** — no status flag, no tombstone, and **no native per-subject/per-claim
-    invalidation**; renewal is a new attestation under a new nonce and does **not** auto-supersede.
+    invalidation**; renewal is **close and recreate the attestation at the same PDA** (the subject
+    fixes the nonce, §4.3) and does **not** auto-supersede.
     Any per-subject/per-claim invalidation and supersession rule is therefore **ours** to build
     (adapter-published records), per `SAS_SPIKE.md` §3. The native mechanism is no longer the
     risk; the design of our invalidation records is.

@@ -42,11 +42,3 @@ repos:
         pass_filenames: false
         always_run: true
         require_serial: true
-      - id: spike-sas
-        name: SAS spike probe (issuance, decode, lifecycle)
-        entry: mise exec -- cargo test --locked --test spike_sas -- --ignored --nocapture
-        language: system
-        stages: [pre-push]
-        pass_filenames: false
-        always_run: true
-        require_serial: true

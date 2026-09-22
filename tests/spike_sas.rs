@@ -395,8 +395,54 @@ fn issue_and_decode_jurisdiction_attestation() {
         "our decoder must reject a revoked (closed) attestation",
     );
 
+    // --- Renewal: close-and-recreate at the SAME PDA (docs/SAS_SPIKE.md §3, §7) --
+    // Because the subject fixes the nonce, renewal reuses the same address: recreate
+    // the just-closed attestation with fresh evidence and confirm it decodes again.
+    // This covers the locked close-and-recreate renewal path, not only revocation.
+    let renewed_expiry = on_chain_unix(rpc) + 86_400;
+    let renew_ix = CreateAttestationBuilder::new()
+        .payer(validator.payer.pubkey())
+        .authority(authority.pubkey())
+        .credential(credential_pda)
+        .schema(schema_pda)
+        .attestation(attestation_pda) // same PDA as the attestation just closed
+        .system_program(SYSTEM_PROGRAM_ID)
+        .nonce(subject_wallet) // same nonce = same subject
+        .data(claim_data.clone())
+        .expiry(renewed_expiry)
+        .instruction();
+    let renew_tx = Transaction::new_signed_with_payer(
+        &[renew_ix],
+        Some(&validator.payer.pubkey()),
+        &[&validator.payer, &authority],
+        rpc.get_latest_blockhash().expect("fetch recent blockhash"),
+    );
+    validator.confirm(
+        &rpc.send_transaction(&renew_tx)
+            .expect("recreate attestation at the same PDA"),
+    );
+
+    let renewed = rpc
+        .get_account(&attestation_pda)
+        .expect("fetch renewed attestation");
+    let renewed_decoded = support::sas::authenticate_and_decode(&renewed.owner, &renewed.data)
+        .expect("our decoder must accept the recreated attestation");
+    assert_eq!(
+        renewed_decoded.nonce, subject_wallet,
+        "renewed attestation keeps the same subject",
+    );
+    assert_eq!(
+        renewed_decoded.expiry, renewed_expiry,
+        "renewed attestation carries a fresh expiry",
+    );
+    assert!(
+        support::sas::is_time_valid(renewed_decoded.expiry, on_chain_unix(rpc)),
+        "renewed attestation is valid again",
+    );
+
     println!(
         "lifecycle: pre-expired mint rejected (Custom 6); short-lived attestation \
-         invalidated at on-chain expiry; attestation revoked by closure",
+         invalidated at on-chain expiry; attestation revoked by closure; \
+         renewed by close-and-recreate at the same PDA",
     );
 }

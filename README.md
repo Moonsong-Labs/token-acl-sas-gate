@@ -31,10 +31,10 @@ mise run verify
 ```
 
 `check` runs formatting checks, strict Clippy, and both unit-test configurations.
-`verify` also runs the SBF build, the local-validator E2E test, and the SAS spike
-probe (`mise run spike`). Use `mise run fmt` to format the Rust sources. See
-[CONTRIBUTING.md](CONTRIBUTING.md) for Git hooks and the shared review and
-contribution workflow.
+`verify` also runs the SBF build and the local-validator E2E test. Use `mise run
+fmt` to format the Rust sources, and run the SAS spike probe on demand with
+`mise run spike`. See [CONTRIBUTING.md](CONTRIBUTING.md) for Git hooks and the
+shared review and contribution workflow.
 
 To build the deployable artifact separately, run `mise run build`.
 The deployable program is written to `target/deploy/doors_of_durin.so`. This is an
