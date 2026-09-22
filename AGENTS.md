@@ -3,13 +3,13 @@
 ## Project context and checks
 
 - Read [README.md](README.md) for project behavior, setup, build commands, and
-  E2E usage. Follow [CONTRIBUTING.md](CONTRIBUTING.md) for shared review rules,
+  integration-test usage. Follow [CONTRIBUTING.md](CONTRIBUTING.md) for shared review rules,
   required checks, and Conventional Commits.
 - Use the pinned environment in [mise.toml](mise.toml), not ambient system
   tools. Run tasks through `mise run` and individual commands through
   `mise exec -- ...`.
 - Follow the documented verification requirements. Do not substitute host tests
-  for the SBF build or local-validator E2E test, skip hooks, or claim checks
+  for the SBF build or the surfnet integration suite, skip hooks, or claim
   passed when they did not run.
 
 ## Delta checkout setup

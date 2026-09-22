@@ -22,13 +22,14 @@ checksum = "sha256:ec92ded45536d82c737b4df70404bbc052ec1711773ecb56a240c11d0d719
 [tools.rust]
 # Keep Rust last: its Cargo bin directory may contain older copies of our other
 # tools. The dedicated mise installs above must take precedence on PATH.
-version = "1.89.0"
+version = "1.94.1"
 profile = "minimal"
-components = ["rustfmt", "clippy"]
+# rust-src is for rust-analyzer's sysroot, not for any build.
+components = ["rustfmt", "clippy", "rust-src"]
 
 [env]
 # The host Rust compiler and Solana's SBF compiler are separate toolchains.
-SBF_TOOLS_VERSION = "v1.53"
+SBF_TOOLS_VERSION = "v1.57"
 # On macOS, explicitly select the SDK paired with the active Xcode toolchain.
 # This avoids mixing a newer Command Line Tools SDK with an older Xcode linker.
 _.source = "scripts/mise-env.sh"
@@ -50,13 +51,23 @@ description = "Run the commit gates: formatting, Clippy, and both test configura
 run = "prek run --all-files"
 
 [tasks.verify]
-description = "Run all push gates, including the SBF build and local-validator E2E"
+description = "Run all push gates, including the SBF build"
 run = "prek run --all-files --stage pre-push"
 
 [tasks.build]
 description = "Build target/deploy/doors_of_durin.so with the pinned SBF toolchain"
-run = 'cargo build-sbf --tools-version "$SBF_TOOLS_VERSION" -- --locked'
+# Separate target dir: this compiler's proc-macro ABI differs from the host's.
+env = { CARGO_TARGET_DIR = "target/sbf" }
+run = 'cargo build-sbf --tools-version "$SBF_TOOLS_VERSION" --sbf-out-dir target/deploy -- --locked'
 
-[tasks.e2e]
-description = "Run the local-validator smoke test (downloads SAS unless SAS_PROGRAM_SO is set)"
+[tasks.sync-programs]
+description = "Re-dump the pinned SAS and Token ACL binaries from mainnet"
+run = [
+    'solana --url "${SOLANA_RPC_URL:-https://api.mainnet-beta.solana.com}" program dump 22zoJMtdu4tQc2PzL74ZUT7FrwgB1Udec8DdW4yw4BdG tests/fixtures/programs/sas.so',
+    'solana --url "${SOLANA_RPC_URL:-https://api.mainnet-beta.solana.com}" program dump TACLkU6CiCdkQN2MjoyDkVg2yAH9zkxiHDsiztQ52TP tests/fixtures/programs/token_acl.so',
+    'shasum -a 256 tests/fixtures/programs/*.so',
+]
+
+[tasks.integration]
+description = "Run the surfnet integration suite (offline)"
 run = "cargo test --locked --test e2e -- --ignored --nocapture"
