@@ -4,9 +4,11 @@ use surfpool_sdk::Pubkey;
 
 /// A third-party program deployed from a committed binary.
 ///
-/// The binary is pinned by hash so an intentional refresh shows up as a diff
-/// rather than as behaviour that quietly changed underneath the suite. The
-/// `drift` test compares these hashes against what mainnet currently serves.
+/// The binary is pinned by hash so a refresh shows up as a diff rather than as
+/// behaviour that quietly changed underneath the suite: the file is checked
+/// against `sha256` before every deploy. Nothing here watches mainnet —
+/// `mise run sync-programs` re-dumps both programs and prints their hashes, and
+/// the suite fails on a pin mismatch until someone reviews the diff.
 pub struct Program {
     pub id: Pubkey,
     pub file: &'static str,

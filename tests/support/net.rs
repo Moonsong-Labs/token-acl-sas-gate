@@ -166,18 +166,22 @@ impl Outcome {
     }
 
     /// Compute units consumed by `program` alone, including when it ran as a
-    /// CPI. The runtime emits one `consumed` line per invocation, so this is
-    /// more precise than the transaction total for `docs/IMPLEMENTATION.md`
-    /// §9.3.
+    /// CPI. The runtime emits one `consumed` line per invocation and this sums
+    /// them, so a transaction that reaches the gate twice reports both — which
+    /// is the total `docs/IMPLEMENTATION.md` §9.3 asks about.
+    ///
+    /// `None` means `program` never ran, as distinct from `Some(0)`.
     pub fn compute_units_for(&self, program: &Pubkey) -> Option<u64> {
         let prefix = format!("Program {program} consumed ");
-        self.logs.iter().find_map(|line| {
+        let mut invocations = self.logs.iter().filter_map(|line| {
             line.strip_prefix(&prefix)?
                 .split_whitespace()
                 .next()?
-                .parse()
+                .parse::<u64>()
                 .ok()
-        })
+        });
+        let first = invocations.next()?;
+        Some(first + invocations.sum::<u64>())
     }
 }
 
