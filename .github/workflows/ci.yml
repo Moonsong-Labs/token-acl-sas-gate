@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  gates:
+    # mise.toml pins Agave assets for linux-x64 and macos-arm64 only.
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: jdx/mise-action@v2
+        with:
+          cache: true
+
+      - name: Cache cargo and the SBF toolchain
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            ~/.cache/solana
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock', 'mise.toml') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      # Installs the pinned SBF platform-tools. Also installs git hooks, which
+      # CI does not use but which keeps this identical to a local checkout.
+      - run: mise run setup
+
+      # The pre-push stage is a superset of the pre-commit one: formatting,
+      # Clippy, both host test configurations, the SBF build, and the surfnet
+      # integration suite. The suite needs no network — SAS and Token ACL are
+      # deployed from the pinned binaries in tests/fixtures/programs.
+      - run: mise run verify
