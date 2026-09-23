@@ -2,7 +2,7 @@
 name = "doors-of-durin"
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.89"
+rust-version = "1.94"
 
 [lib]
 crate-type = ["cdylib", "lib"]
@@ -14,13 +14,14 @@ no-entrypoint = []
 pinocchio = "0.11.2"
 
 [dev-dependencies]
-# SAS spike: issue attestations from the probe test via the first-party client
-# crate, and decode them with borsh where convenient. Pinned per docs/SAS_SPIKE.md.
-borsh = "1"
-solana-attestation-service-client = "1.0.9"
-solana-rpc-client = "2.3.13"
-solana-sdk = "2.3.1"
-tempfile = "3"
+surfpool-sdk = "1.6.0"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+solana-instruction = "3.4"
+solana-transaction = { version = "4.1", features = ["wincode"] }
+solana-transaction-error = "3.3"
+solana-rpc-client-types = "4.2"
+token-acl-interface = "0.3"
+sha2 = "0.9"
 
 [lints.rust]
 # Pinocchio's entrypoint macros use Solana's custom target OS.

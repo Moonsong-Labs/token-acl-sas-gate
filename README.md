@@ -31,58 +31,72 @@ mise run verify
 ```
 
 `check` runs formatting checks, strict Clippy, and both unit-test configurations.
-`verify` also runs the SBF build and the local-validator E2E test. Use `mise run
-fmt` to format the Rust sources, and run the SAS spike probe on demand with
-`mise run spike`. See [CONTRIBUTING.md](CONTRIBUTING.md) for Git hooks and the
-shared review and contribution workflow.
+`verify` also runs the SBF build and the integration suite. Use `mise run fmt`
+to format the Rust sources. See [CONTRIBUTING.md](CONTRIBUTING.md) for Git hooks
+and the shared review and contribution workflow.
 
 To build the deployable artifact separately, run `mise run build`.
 The deployable program is written to `target/deploy/doors_of_durin.so`. This is an
 on-chain library, not a command-line executable; `cargo run` does not apply.
 The unit test calls the processor directly, not through a Solana runtime.
 
-## Local-validator E2E smoke test
+## Surfnet integration tests
 
-The root `tests/e2e.rs` integration test builds doors-of-durin, downloads the deployed
-Solana Attestation Service (SAS) binary from mainnet, and loads both into a fresh
-`solana-test-validator` using `--bpf-program`. This loads programs at genesis;
-it does not exercise deployment transactions or deploy anything to a public cluster.
-
-After setup, run:
+Integration tests run against an in-process [surfnet](https://surfpool.run),
+booted by the `surfpool-sdk` crate. It executes real SBF bytecode through
+LiteSVM and exposes cheatcodes for account fabrication and clock control, which
+the gate's test matrix needs and `solana-test-validator` cannot provide.
 
 ```sh
-mise run e2e
+mise run integration
 ```
 
-The test is ignored by ordinary `cargo test`. It asserts both program accounts
-are executable, then sends and confirms an empty doors-of-durin instruction. It does
-not yet exercise SAS credential creation.
+No network, no RPC endpoint. The Solana Attestation Service and Token ACL are
+deployed from binaries committed under `tests/fixtures/programs`, each pinned by
+SHA-256 in `tests/support/ids.rs` and verified before it is loaded. Token-2022
+and the Associated Token Account program come from LiteSVM's vendored copies.
 
-By default, every E2E run downloads SAS from mainnet, following the
-[official Rust demo](https://github.com/solana-foundation/solana-attestation-service/tree/master/examples/rust/attestation-flow-guide#local-development).
-This needs network access and is not pinned: a SAS upgrade can change the binary.
-To reuse a known binary without contacting mainnet, set `SAS_PROGRAM_SO`:
+The tests build the program with `cargo build-sbf` first, so they are
+`#[ignore]`d and skipped by ordinary `cargo test`. They run in the pre-push
+gate.
+
+To pick up a new upstream release:
 
 ```sh
-SAS_PROGRAM_SO=/absolute/path/to/sas.so mise run e2e
+mise run sync-programs
 ```
 
-On Windows, run these commands inside x86_64 WSL and use a Linux path for the
-binary (for example, `/mnt/c/path/to/sas.so`), not a PowerShell environment
-variable or Windows path. Building doors-of-durin may still need network access
-for uncached dependencies.
+That re-dumps both programs from mainnet and prints their hashes. If the
+bytecode changed, `git diff` shows it and the suite fails with a pin mismatch
+until the `sha256` values in `tests/support/ids.rs` are updated — so an upstream
+change is always a reviewed diff rather than a silent behaviour shift.
 
-The harness uses temporary files, locally selected ports, and an ephemeral payer;
-it does not modify your Solana CLI configuration or use your wallet. It stops
-its validator on success or panic. On failure after startup, it prints the path
-to the retained validator logs and ledger. Setup commands and RPC waits have
-timeouts; missing tools fail the explicitly requested test rather than skipping it.
+Writing a test:
+
+```rust
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "builds the program with cargo build-sbf"]
+async fn my_case() {
+    let harness = Harness::start().await;
+    let outcome = harness.send(&[instruction], &[harness.payer()]);
+    outcome.assert_success();
+}
+```
+
+The `multi_thread` flavor is required: the blocking `RpcClient` calls
+`block_in_place`, which tokio permits only on the multi-threaded scheduler, and
+the panic names solana-rpc-client rather than the attribute.
+
+The harness deploys the gate at a fixed test-only address so PDAs derived under
+it stay reproducible across runs. It holds no wallet and does not touch your
+Solana CLI configuration.
 
 ## Layout
 
 - `src/lib.rs`: program entrypoint and no-op instruction processor.
-- `tests/e2e.rs`: opt-in local-validator smoke test.
-- `tests/support/mod.rs`: program setup and validator lifecycle.
+- `tests/e2e.rs`: opt-in surfnet integration suite.
+- `tests/support/`: harness — surfnet lifecycle, cheatcodes, and outcome
+  attribution.
 - `Cargo.toml`: library configuration and Pinocchio dependency.
 - `mise.toml`: pinned tools, SBF compiler version, and development tasks.
 

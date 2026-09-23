@@ -19,9 +19,8 @@
 //! 141+L     32  token_account   Pubkey
 //! ```
 
-use solana_sdk::pubkey::Pubkey;
-
-use super::SAS_PROGRAM_ID;
+use super::ids;
+use surfpool_sdk::Pubkey;
 
 /// Attestation discriminator byte (`Credential = 0`, `Schema = 1`,
 /// `Attestation = 2`).
@@ -53,7 +52,7 @@ pub fn authenticate_and_decode(
     owner: &Pubkey,
     account_data: &[u8],
 ) -> Result<DecodedAttestation, &'static str> {
-    if owner != &SAS_PROGRAM_ID {
+    if owner != &ids::SAS.id {
         return Err("owner is not the SAS program");
     }
     if account_data.len() < MIN_LEN {
@@ -159,7 +158,7 @@ mod tests {
     fn every_field_round_trips() {
         let (expected, bytes) = sample();
         assert_eq!(bytes.len(), MIN_LEN + expected.data.len());
-        let decoded = authenticate_and_decode(&SAS_PROGRAM_ID, &bytes)
+        let decoded = authenticate_and_decode(&ids::SAS.id, &bytes)
             .expect("well-formed attestation must decode");
         assert_eq!(decoded, expected);
     }
@@ -178,7 +177,7 @@ mod tests {
             token_account,
         );
         assert_eq!(bytes.len(), MIN_LEN);
-        let decoded = authenticate_and_decode(&SAS_PROGRAM_ID, &bytes)
+        let decoded = authenticate_and_decode(&ids::SAS.id, &bytes)
             .expect("empty-data attestation must decode");
         assert!(decoded.data.is_empty());
         assert_eq!(decoded.nonce, nonce);
@@ -201,7 +200,7 @@ mod tests {
         let (_, mut bytes) = sample();
         bytes[0] = 1; // Schema discriminator, not Attestation.
         assert_eq!(
-            authenticate_and_decode(&SAS_PROGRAM_ID, &bytes),
+            authenticate_and_decode(&ids::SAS.id, &bytes),
             Err("discriminator is not an attestation"),
         );
     }
@@ -211,7 +210,7 @@ mod tests {
         let (_, bytes) = sample();
         let truncated = &bytes[..MIN_LEN - 1];
         assert_eq!(
-            authenticate_and_decode(&SAS_PROGRAM_ID, truncated),
+            authenticate_and_decode(&ids::SAS.id, truncated),
             Err("account data too short for an attestation"),
         );
     }
@@ -223,7 +222,7 @@ mod tests {
         let (_, mut bytes) = sample();
         bytes[97..101].copy_from_slice(&u32::MAX.to_le_bytes());
         assert_eq!(
-            authenticate_and_decode(&SAS_PROGRAM_ID, &bytes),
+            authenticate_and_decode(&ids::SAS.id, &bytes),
             Err("account data shorter than encoded data_len"),
         );
     }

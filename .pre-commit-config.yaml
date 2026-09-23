@@ -34,9 +34,9 @@ repos:
         pass_filenames: false
         always_run: true
         require_serial: true
-      - id: e2e
-        name: SBF build and local-validator E2E
-        entry: mise exec -- cargo test --locked --test e2e -- --ignored --nocapture
+      - id: integration
+        name: SBF build and surfnet integration suite
+        entry: mise run integration
         language: system
         stages: [pre-push]
         pass_filenames: false

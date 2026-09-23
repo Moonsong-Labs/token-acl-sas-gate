@@ -72,11 +72,10 @@ mise run verify
 ```
 
 The gates cover formatting, strict Clippy, both host test configurations, and
-the ignored validator E2E test, which builds SBF with locked dependencies.
+the SBF build and the surfnet integration suite, which needs no network.
 Pre-commit checks also run at pre-push. Missing tools, failed checks, or
 unverifiable required checks block landing; host tests do not substitute for
-SBF/E2E. `SAS_PROGRAM_SO` can supply a known SAS binary to avoid its mainnet
-download. Never claim a check ran when it did not.
+the SBF build or the suite. Never claim a check ran when it did not.
 
 ## Push and verify
 

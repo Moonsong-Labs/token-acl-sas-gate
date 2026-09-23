@@ -18,17 +18,17 @@ The `token-acl-gate` repository specifies **Agave 3.x with CI pinned to 3.1.11**
 "Solana CLI 2.x vs 3.x TokenMetadata" note in the Token ACL guide is historical context, not a  
 current general build requirement.
 Record the verified combination here and treat it as the single source of truth:
-| Item | Value (fill in and pin) |
+| Item | Value |
 | --- | --- |
-| Token ACL version / commit |  |
-| SAS version / commit | `5b64cf0` (default branch; no release tags) — see `SAS_SPIKE.md` §1 |
-| Token ACL program IDs (devnet / mainnet) |  |
-| SAS program IDs (devnet / mainnet) | `22zoJMtdu4tQc2PzL74ZUT7FrwgB1Udec8DdW4yw4BdG` (same on both) |
-| Our gate program ID (devnet / mainnet) |  |
-| Target cluster per milestone |  |
-| Rust / `cargo-build-sbf` / SDK crate versions |  |
-| Local validator version (Agave) |  |
-| Local dependency-loading method |  |
+| Token ACL version / commit | `token-acl-client` / `token-acl-interface` 0.3.0 |
+| SAS version / commit | `solana-attestation-service-client` 1.0.9 (2025-07-02; latest published) |
+| Token ACL program IDs (devnet / mainnet) | mainnet `TACLkU6CiCdkQN2MjoyDkVg2yAH9zkxiHDsiztQ52TP`; devnet not pinned |
+| SAS program IDs (devnet / mainnet) | mainnet `22zoJMtdu4tQc2PzL74ZUT7FrwgB1Udec8DdW4yw4BdG`; devnet not pinned |
+| Our gate program ID (devnet / mainnet) | test-only `55fu8EtaF3Zsp35cXtWvQvBi9iVeGgCKms6WWbanj1zz` (`tests/support/ids.rs`); no cluster deployment yet |
+| Target cluster per milestone | not decided |
+| Rust / `cargo-build-sbf` / SDK crate versions | host Rust 1.94.1; `rust-version` 1.94; `SBF_TOOLS_VERSION` v1.57 (rustc 1.95.0-dev, LLVM 22); leaf solana crates anchored on `solana-rpc-client` 4.2 |
+| Local validator version | surfpool 1.6.0 via `surfpool-sdk` (LiteSVM 0.16.0, agave-feature-set 4.2.1) — not Agave's `solana-test-validator` |
+| Local dependency-loading method | pinned binaries: SAS and Token ACL committed under `tests/fixtures/programs`, SHA-256 verified before load; Token-2022 and ATA come from LiteSVM's vendored `spl_token_2022-11.0.0` and `spl_associated_token_account-1.1.1` |
 
 **Local dependency loading — two viable approaches; choose one and record it.**
 
@@ -49,7 +49,7 @@ upstream change cannot silently break the gate.
 PDA is derived under **our gate program's address** from:
 
 ```text
-["thaw-extra-account-metas", mint_address]
+["thaw_extra_account_metas", mint_address]
 ```
 
 The wallet owner is **not** an additional seed for the standard list account. Wallet-specific  
@@ -66,8 +66,9 @@ and updates them** are ours.
 Design questions to settle in code:
 
 *   Which accounts does our gate need during thaw — attestation account, attestation type,  
-    issuer record, per-mint policy, block/invalidation record — and which are read-only vs  
-    PDAs owned by our program?
+    issuer record, per-mint policy, block/invalidation record, and the flag account  
+    (`[b"FLAG_ACCOUNT", token_account]` under Token ACL, which `ThawPermissionless`  
+    requires and passes through) — and which are read-only vs PDAs owned by our program?
     
 *   How are record PDAs derived (mint, wallet, issuer seeds), and how does the metas list point  
     at them?

@@ -138,44 +138,46 @@ separate them.
 checking owner + discriminator + layout; account-ownership rules prevent forgery. A CPI
 into SAS adds no security (SAS has no "verify" instruction anyway) and costs CU.
 
-**Measured (probe test, `tests/spike_sas.rs`, run against a live validator):** an
-attestation with a one-field `jurisdiction = "DE"` claim is **179 bytes** — exactly
-`173 + L` with `L = 6` (4-byte length prefix + `"DE"`), confirming the byte layout in §2
-end-to-end. The spike decoder and the client crate's `Attestation::from_bytes` agree
-field-by-field on the issued values.
+**Measured (probe test, `tests/e2e.rs::sas_issue_decode_and_lifecycle`, run against the
+pinned SAS binary in an offline surfnet):** an attestation with a one-field
+`jurisdiction = "DE"` claim is **179 bytes** — exactly `173 + L` with `L = 6` (4-byte length
+prefix + `"DE"`), confirming the byte layout in §2 end-to-end. Our decoder reads back every
+field of the account SAS actually wrote.
 
 **On-chain decode CU is still TODO** — it can only be measured once the actual gate
 program decodes during a thaw callback; the spike decoder runs host-side in the test.
 Deferred to the UC1 build (step 3).
 
-**Provenance caveat (reproducibility).** §2–§4 are read from source at `5b64cf0`, but the
-probe loads the **currently-deployed mainnet** SAS binary (`tests/support/mod.rs` downloads it
-unless `SAS_PROGRAM_SO` is set), which is **not** pinned to `5b64cf0`. The two agreed at run
-time, but a mainnet upgrade could diverge. For reproducible runs, set `SAS_PROGRAM_SO` to a
-**checksum-pinned** binary; building `5b64cf0` into a loadable `.so` (its own toolchain /
-pinocchio fork) is a follow-up. Because of this the probe is an **opt-in** `mise run spike`
-task, not a required push gate, until a pinnable SAS release (or checksum-pinned binary) exists.
+**Provenance (reproducibility) — resolved by the surfnet harness (PR #4).** §2–§4 are read
+from SAS source at `5b64cf0`; the probe now runs against the SAS binary committed under
+`tests/fixtures/programs`, **SHA-256-verified before load** (`tests/support/ids.rs`). A
+mainnet upgrade surfaces as a pin mismatch (`mise run sync-programs` re-dumps and prints new
+hashes), not a silent change — so the probe is reproducible and part of the gated integration
+suite. (The pin guarantees reproducibility, not equivalence to `5b64cf0`.)
 
 ---
 
 ## 6. Test-harness implications (feed into the UC1 build)
 
-- **Depend on `solana-attestation-service-client = "1.0.9"`** (crates.io) — first-party
-  builders (`CreateCredential/CreateSchema/CreateAttestation/CloseAttestation`) and Borsh
-  account decoders. Keep the harness on **borsh 1.x** to match it.
+- **Instructions are hand-built (`tests/support/sas_ix.rs`).** The first-party
+  `solana-attestation-service-client` targets the solana 2.x stack and cannot interoperate
+  with the surfpool 4.x crates the harness runs on, so the probe builds the SAS instructions
+  directly from the discriminators, account layouts, and byte encodings recorded here
+  (`[1-byte discriminator] ++ borsh(args)`, all length prefixes 4-byte LE `u32`).
 - **Full issuance flow:** `CreateCredential` → `CreateSchema` → `CreateAttestation`, all
   ordinary transactions; payer + the credential authority / an authorized signer co-sign.
   PDA seeds are byte-for-byte in §3 above.
 - **You cannot mint a pre-expired attestation** — SAS rejects `expiry < now` at creation
-  (`Custom(6)`). To test the expired/expiry-boundary rows, mint with a short future expiry
-  and **warp the validator clock past it**, then assert the gate denies. Use `expiry = 0`
-  as the never-expires positive control.
+  (`Custom(6)`); the probe uses a negative `expiry`, which is below any on-chain time, as a
+  deterministic pre-expired case. Our own read-time rule (`expiry == 0 || now < expiry`) is
+  covered by the `is_time_valid` unit tests; testing it end-to-end needs the gate program
+  (step 3) plus LiteSVM clock control (surfnet cheatcodes).
 - **`nonce` is the subject key.** Negative "wrong subject" = mint with a nonce ≠ the token
   account owner. "Wrong schema"/"wrong credential" = pass a mismatched account so the PDA
   fails to re-derive.
-- **`emit_event` / event-authority PDA** (`__event_authority` →
-  `DzSpKpST2TSyrxokMXchFz3G2yn5WEGoxzpGEUDjCX4g`) is needed for **close** only; the client
-  builder defaults it. `CreateAttestation` needs no event authority.
+- **`emit_event` / event-authority PDA** (`["__event_authority"]` →
+  `DzSpKpST2TSyrxokMXchFz3G2yn5WEGoxzpGEUDjCX4g`) is needed for **close** only, derived in
+  `sas_ix::close_attestation`. `CreateAttestation` needs no event authority.
 
 ---
 
