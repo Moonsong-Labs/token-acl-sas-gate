@@ -97,7 +97,7 @@ account as an absent policy.**
 > Items 1–4 below are resolved; full
 > findings, byte layouts, and a live probe are in `SAS_SPIKE.md`. Key results: **SAS has no
 > `subject` field** — the subject is carried in the attestation's `nonce` (issuer convention),
-> and `token_account` is a separate asset-restriction field (items 1–2); **revocation = account
+> and `token_account` is the tokenized-attestation recipient, not an asset restriction (items 1–2); **revocation = account
 > closure** with no flag or tombstone (item 3); and there is **no renewal instruction** —
 > renewal is **close the attestation and recreate it at the same** `PDA(credential, schema, subject)`
 > (the subject fixes the nonce, §4.3), and reissuance does not auto-supersede
@@ -164,7 +164,9 @@ Allow thaw iff **all** hold:
     explicit handling. **Mechanism (spike):** SAS attestations have **no dedicated `subject`
     field**, so the subject is the attestation's **`nonce`** — the gate checks
     `attestation.nonce == current owner`, and the allowlisted issuer must set `nonce = subject
-    wallet` at issuance. `token_account` is a separate asset-restriction field, not the subject.
+    wallet` at issuance. `token_account` is the tokenized-attestation recipient (`Pubkey::default()` otherwise), not
+    the subject and not an asset restriction — the gate must not compare it against the thawed
+    account.
     See `SAS_SPIKE.md` §7.
     
 4.  **Validity in time** — within the attestation's explicit `expiry` (Unix seconds vs  

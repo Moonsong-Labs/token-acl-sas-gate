@@ -48,7 +48,7 @@ prefix; all integers are little-endian.
 | 101 | L | **data** | bytes | claim, schema-encoded (§5) |
 | 101+L | 32 | **signer** | Pubkey | the credential-authorized signer that created it (one of the credential's `authorized_signers`) — **not** "the issuer"; issuer identity is decided in §4 |
 | 133+L | 8 | **expiry** | i64 LE | Unix seconds; `0` = never |
-| 141+L | 32 | token_account | Pubkey | asset restriction: binds the attestation to a specific token account (tokenized attestations); all-zeros (default) = not asset-restricted. **Not** the subject — see §7 |
+| 141+L | 32 | token_account | Pubkey | recipient account holding the *tokenized* attestation (SAS mints the attestation token into it); `Pubkey::default()` (zeros) for ordinary attestations. **Not** the subject and **not** an asset restriction — see §7 |
 
 ### Schema (`program/src/state/schema.rs`) — `51 + N + D + Y + F`
 
@@ -209,12 +209,20 @@ attestation per subject per (credential, schema): renewal is **close the old att
 recreate at the same `PDA(credential, schema, subject)`** with new expiry/data — not a fresh
 nonce (§3). The step-5 lifecycle build owns this.
 
-**`token_account` is a different property — not the subject.** The attestation's
-`token_account` field is an **asset restriction**: it scopes a (tokenized) attestation to a
-specific token account/asset, and is all-zeros by default when the attestation is not
-asset-restricted. It answers "which asset may this evidence be used for," not "who is this
-evidence about." Subject binding stays on `nonce`; asset restriction via `token_account` is
-an orthogonal narrowing we can layer later if a policy needs it.
+**`token_account` is a different property — not the subject, and not an asset restriction.**
+Three identities are easy to conflate:
+
+- **`nonce`** — what the attestation is keyed to (for us, the subject wallet); part of the PDA.
+- **attestation PDA** — where the SAS record itself lives.
+- **`token_account`** — only meaningful for a *tokenized* attestation: the ATA that holds the
+  non-transferable Token-2022 "badge" SAS mints to represent the record
+  (`create_tokenized_attestation.rs` sets it from `recipient_token_account_info`). Tokenizing
+  changes nothing about what is claimed — it just gives the credential a wallet-visible token.
+
+**Our evidence is ordinary (non-tokenized), so `token_account` is always `Pubkey::default()`
+and the gate never reads it.** It does **not** restrict which regulated asset the evidence may
+authorize, so the gate must **not** compare it against the token account being thawed — that
+would reject valid evidence. Asset-scoping, if a policy needs it, is defined separately.
 
 **Rejected for the MVP:** carrying the subject as an explicit `subject: Pubkey` field inside
 the schema `data` — more self-documenting but couples binding to claim decoding, adds a field

@@ -34,8 +34,10 @@ fixture, build order, risks) and the business rationale in `USE_CASES.md`.
   extension, since checking the current owner alone does not prevent a later reassignment
   (`IMPLEMENTATION.md` §4). Owner-consent signing would be a further product decision; nothing
   here assumes it. **Mechanism (spike):** SAS has no `subject` field, so the subject is the
-  attestation's `nonce` (issuer sets `nonce = subject wallet`); `token_account` is a separate
-  asset-restriction field. See `IMPLEMENTATION.md` §4.3 / `SAS_SPIKE.md` §7.
+  attestation's `nonce` (issuer sets `nonce = subject wallet`). `token_account` is **not** the
+  subject and **not** an asset restriction — it is the recipient of a tokenized attestation
+  (zeros otherwise), and must not be compared against the thawed account. See
+  `IMPLEMENTATION.md` §4.3 / `SAS_SPIKE.md` §7.
 
 **Two denial conditions — semantically separate, not necessarily both stored.**
 
