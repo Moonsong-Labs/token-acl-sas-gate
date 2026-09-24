@@ -1,0 +1,28 @@
+{
+  "name": "doors-of-durin-demo",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Demo web frontend for the Token ACL gate, driven against a local surfnet.",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "seed": "tsx scripts/seed.ts",
+    "surfnet": "surfpool start --no-tui --no-studio --no-deploy -y --network mainnet --airdrop-amount 0"
+  },
+  "dependencies": {
+    "@solana/kit": "^2",
+    "next": "^15.1.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  }
+}

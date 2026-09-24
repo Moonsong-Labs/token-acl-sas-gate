@@ -1,0 +1,36 @@
+# Demo toolchain, pinned so the web demo reproduces alongside the Rust and
+# surfpool-sdk environment. Directory-scoped: it applies under app/ and leaves
+# the repo-root (Rust) mise.toml untouched.
+min_version = "2026.9.3"
+
+[tools]
+node = "24.21.0"
+# surfpool CLI kept at 1.6.0 to match the workspace's `surfpool-sdk 1.6.0`, so
+# the CLI's fork / cheatcode / clock behavior matches what the Rust integration
+# tests assume. Installed via mise's ubi backend from txtx/surfpool releases.
+"ubi:txtx/surfpool" = "1.6.0"
+
+# Tasks wrap npm so they run under the pinned Node — invoking npm/node directly
+# would use whatever is on PATH (e.g. /snap/bin/node), not the pinned version.
+# (`mise run deps` is the JS dependency install; `mise install` provisions the
+# tools themselves.)
+
+[tasks.deps]
+description = "Install web dependencies (pinned Node)"
+run = "npm install"
+
+[tasks.surfnet]
+description = "Start a headless surfnet forking mainnet"
+run = "npm run surfnet"
+
+[tasks.seed]
+description = "Preflight the surfnet (connectivity + required programs)"
+run = "npm run seed"
+
+[tasks.dev]
+description = "Run the Next dev server"
+run = "npm run dev"
+
+[tasks.build]
+description = "Build the Next app (pinned Node)"
+run = "npm run build"
