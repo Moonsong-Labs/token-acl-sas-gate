@@ -15,9 +15,27 @@
 
 mod support;
 
-use solana_instruction::Instruction;
+use solana_instruction::{Instruction, error::InstructionError};
+use solana_transaction_error::TransactionError;
 use support::{Harness, Outcome, ids, sas, sas_ix};
 use surfpool_sdk::{Keypair, Pubkey, Signer};
+
+/// Ledger time as SAS sees it (`Clock::unix_timestamp`), read from the surfnet.
+/// Deriving expiries from this keeps successful-creation cases from going stale
+/// on a fixed calendar date.
+fn on_chain_unix(harness: &Harness) -> i64 {
+    let clock = harness
+        .rpc()
+        .get_account(&Pubkey::from_str_const(
+            "SysvarC1ock11111111111111111111111111111111",
+        ))
+        .expect("read clock sysvar");
+    i64::from_le_bytes(
+        clock.data[32..40]
+            .try_into()
+            .expect("clock unix_timestamp field"),
+    )
+}
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "builds the program with cargo build-sbf; run via `mise run integration`"]
@@ -131,7 +149,8 @@ async fn sas_issue_decode_and_lifecycle() {
 
     // Attestation: jurisdiction = "DE", bound to the subject, valid.
     let claim = sas_ix::string_claim("DE");
-    let expiry = 1_900_000_000; // far-future Unix seconds
+    let now = on_chain_unix(&harness);
+    let expiry = now + 30 * 24 * 60 * 60; // 30 days past ledger time
     harness
         .send(
             &[sas_ix::create_attestation(
@@ -181,7 +200,7 @@ async fn sas_issue_decode_and_lifecycle() {
         "attestation account is 173 + data_len bytes",
     );
     assert!(
-        sas::is_time_valid(decoded.expiry, 1_800_000_000),
+        sas::is_time_valid(decoded.expiry, now),
         "our read-time rule accepts an unexpired attestation",
     );
 
@@ -202,9 +221,19 @@ async fn sas_issue_decode_and_lifecycle() {
         )],
         &[harness.payer(), &authority],
     );
+    assert_eq!(
+        rejected.error,
+        Some(TransactionError::InstructionError(
+            0,
+            InstructionError::Custom(6),
+        )),
+        "SAS must reject a pre-expired attestation with InvalidAttestationData \
+         (Custom 6), not some unrelated failure:\n{}",
+        rejected.logs.join("\n"),
+    );
     assert!(
-        rejected.error.is_some(),
-        "SAS must reject a pre-expired attestation:\n{}",
+        rejected.reached(&ids::SAS.id),
+        "the rejection must be SAS's own decision (it was invoked):\n{}",
         rejected.logs.join("\n"),
     );
 
@@ -231,7 +260,7 @@ async fn sas_issue_decode_and_lifecycle() {
 
     // Renewal = close-and-recreate at the SAME PDA (the subject fixes the
     // nonce, §3/§7): recreate with fresh evidence and decode the replacement.
-    let renewed_expiry = 1_950_000_000;
+    let renewed_expiry = now + 60 * 24 * 60 * 60; // 60 days past ledger time
     harness
         .send(
             &[sas_ix::create_attestation(

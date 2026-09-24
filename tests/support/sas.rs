@@ -66,8 +66,11 @@ pub fn authenticate_and_decode(
     let total = MIN_LEN
         .checked_add(data_len)
         .ok_or("data_len overflows account size")?;
-    if account_data.len() < total {
-        return Err("account data shorter than encoded data_len");
+    if account_data.len() != total {
+        // Exactly 173 + data_len — reject a short buffer and also a longer one,
+        // so trailing bytes are never reinterpreted as a different layout (this
+        // decoder is slated to become the gate's).
+        return Err("account data length does not match encoded data_len");
     }
 
     let nonce = Pubkey::new_from_array(read_array::<32>(account_data, 1));
@@ -223,7 +226,19 @@ mod tests {
         bytes[97..101].copy_from_slice(&u32::MAX.to_le_bytes());
         assert_eq!(
             authenticate_and_decode(&ids::SAS.id, &bytes),
-            Err("account data shorter than encoded data_len"),
+            Err("account data length does not match encoded data_len"),
+        );
+    }
+
+    #[test]
+    fn rejects_trailing_byte() {
+        // The layout is exactly 173 + data_len; a longer buffer must be refused,
+        // not silently reinterpreted.
+        let (_, mut bytes) = sample();
+        bytes.push(0);
+        assert_eq!(
+            authenticate_and_decode(&ids::SAS.id, &bytes),
+            Err("account data length does not match encoded data_len"),
         );
     }
 

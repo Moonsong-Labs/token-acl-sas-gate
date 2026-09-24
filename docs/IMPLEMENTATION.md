@@ -91,7 +91,10 @@ account as an absent policy.**
 
 ## 3. SAS spike — questions to settle before building eligibility
 
-> **Spike status: DONE** (SAS pinned at commit `5b64cf0`). Items 1–4 below are resolved; full
+> **Spike status: DONE.** SAS **source** was read at commit `5b64cf0` for the byte-layout
+> findings; the runtime test fixture is a **separate** pin — the mainnet binary, SHA-256-verified
+> (`tests/support/ids.rs`) — and their equivalence is **not** established (see `SAS_SPIKE.md` §5).
+> Items 1–4 below are resolved; full
 > findings, byte layouts, and a live probe are in `SAS_SPIKE.md`. Key results: **SAS has no
 > `subject` field** — the subject is carried in the attestation's `nonce` (issuer convention),
 > and `token_account` is a separate asset-restriction field (items 1–2); **revocation = account
