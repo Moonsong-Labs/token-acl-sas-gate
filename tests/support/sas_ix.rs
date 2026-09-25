@@ -187,3 +187,75 @@ pub fn close_attestation(
         ],
     )
 }
+
+/// Tokenize an existing schema and issue its attestation token to the subject.
+/// Account order and arguments follow the pinned SAS source's opcodes 9 and 10.
+#[allow(clippy::too_many_arguments)]
+pub fn tokenized_attestation(
+    payer: &Pubkey,
+    authority: &Pubkey,
+    credential: &Pubkey,
+    schema: &Pubkey,
+    attestation: &Pubkey,
+    subject: &Pubkey,
+    claim: &[u8],
+    expiry: i64,
+) -> (Vec<Instruction>, Pubkey, Pubkey) {
+    let token = Pubkey::from_str_const("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb");
+    let ata = Pubkey::from_str_const("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL");
+    let schema_mint =
+        Pubkey::find_program_address(&[b"schemaMint", schema.as_ref()], &ids::SAS.id).0;
+    let attestation_mint =
+        Pubkey::find_program_address(&[b"attestationMint", attestation.as_ref()], &ids::SAS.id).0;
+    let sas = Pubkey::find_program_address(&[b"sas"], &ids::SAS.id).0;
+    let recipient = Pubkey::find_program_address(
+        &[subject.as_ref(), token.as_ref(), attestation_mint.as_ref()],
+        &ata,
+    )
+    .0;
+    let mut schema_data = vec![9];
+    schema_data.extend_from_slice(&100u64.to_le_bytes());
+    let schema_ix = Instruction::new_with_bytes(
+        ids::SAS.id,
+        &schema_data,
+        vec![
+            AccountMeta::new(*payer, true),
+            AccountMeta::new_readonly(*authority, true),
+            AccountMeta::new_readonly(*credential, false),
+            AccountMeta::new_readonly(*schema, false),
+            AccountMeta::new(schema_mint, false),
+            AccountMeta::new_readonly(sas, false),
+            AccountMeta::new_readonly(SYSTEM_PROGRAM, false),
+            AccountMeta::new_readonly(token, false),
+        ],
+    );
+    let mut issue = create_attestation(
+        payer,
+        authority,
+        credential,
+        schema,
+        attestation,
+        subject,
+        claim,
+        expiry,
+    );
+    issue.data[0] = 10;
+    for value in [
+        b"UC1 credential".as_slice(),
+        b"https://example.invalid/uc1",
+        b"UC1",
+    ] {
+        push_len_prefixed(&mut issue.data, value);
+    }
+    issue.data.extend_from_slice(&1024u16.to_le_bytes());
+    issue.accounts.extend([
+        AccountMeta::new(schema_mint, false),
+        AccountMeta::new(attestation_mint, false),
+        AccountMeta::new_readonly(sas, false),
+        AccountMeta::new(recipient, false),
+        AccountMeta::new_readonly(*subject, false),
+        AccountMeta::new_readonly(token, false),
+        AccountMeta::new_readonly(ata, false),
+    ]);
+    (vec![schema_ix, issue], recipient, attestation_mint)
+}

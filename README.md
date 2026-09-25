@@ -1,9 +1,14 @@
 # doors-of-durin
 
-A minimal Solana program built with [Pinocchio](https://docs.rs/pinocchio/0.11.2).
-The entrypoint currently accepts all instructions and returns success without
-reading or modifying accounts. No instruction format, state, or program ID is
-defined yet.
+A Solana credential-admission gate built with [Pinocchio](https://docs.rs/pinocchio/0.11.2).
+Token ACL calls the gate before permissionless thaw of a Token-2022 account.
+The first use case accepts SAS evidence under a per-mint policy, with issuer,
+schema, wallet binding, expiry, freshness, jurisdiction, and block checks.
+Unknown instructions fail closed.
+
+See [the UC1 protocol reference](docs/ADMISSION.md) for setup instructions,
+account layouts, policy semantics, and error codes. The schema is a test fixture;
+no external compliance provider integration or cluster deployment is configured.
 
 ## Prerequisites
 
@@ -38,7 +43,8 @@ and the shared review and contribution workflow.
 To build the deployable artifact separately, run `mise run build`.
 The deployable program is written to `target/deploy/doors_of_durin.so`. This is an
 on-chain library, not a command-line executable; `cargo run` does not apply.
-The unit test calls the processor directly, not through a Solana runtime.
+Unit tests exercise decoding and validation directly. Integration tests execute
+the deployed SBF program through Token ACL.
 
 ## Surfnet integration tests
 
@@ -93,7 +99,9 @@ Solana CLI configuration.
 
 ## Layout
 
-- `src/lib.rs`: program entrypoint and no-op instruction processor.
+- `src/lib.rs`: instruction dispatch, authority checks, state setup, and thaw callback.
+- `src/state.rs`: policy, SAS schema, attestation, and claim decoding.
+- `src/metas.rs`: standard Token ACL account discovery list.
 - `tests/e2e.rs`: opt-in surfnet integration suite.
 - `tests/support/`: harness — surfnet lifecycle, cheatcodes, and outcome
   attribution.

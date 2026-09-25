@@ -58,13 +58,18 @@ async fn gate_and_pinned_programs_deploy_and_execute() {
          wrong program"
     );
 
-    // The processor currently accepts any instruction, so an empty one is the
-    // narrowest proof that real SBF bytecode executed in the runtime.
+    // Unknown instructions must fail closed while proving the SBF entrypoint ran.
     let outcome: Outcome = harness.send(
         &[Instruction::new_with_bytes(ids::GATE, &[], vec![])],
         &[harness.payer()],
     );
-    outcome.assert_success();
+    assert_eq!(
+        outcome.error,
+        Some(TransactionError::InstructionError(
+            0,
+            InstructionError::InvalidInstructionData
+        ))
+    );
     assert!(
         outcome.reached(&ids::GATE),
         "logs should show the gate being invoked:\n{}",
@@ -300,4 +305,580 @@ async fn sas_issue_decode_and_lifecycle() {
         renewed_decoded.expiry, renewed_expiry,
         "renewal carries a fresh expiry",
     );
+}
+
+fn gate_denied(outcome: &Outcome, error: doors_of_durin::GateError) {
+    assert!(outcome.reached(&ids::GATE), "gate not reached: {outcome:?}");
+    assert_eq!(
+        outcome.error,
+        Some(TransactionError::InstructionError(
+            0,
+            InstructionError::Custom(error as u32)
+        )),
+        "{outcome:?}"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "builds the program with cargo build-sbf; run via `mise run integration`"]
+async fn uc1_admission_and_policy_governance() {
+    use doors_of_durin::GateError;
+    use support::admission::{Admission, list_pda, policy_pda, status_pda};
+    let f = Admission::start().await;
+    let payer = f.harness.payer().pubkey();
+    assert_eq!(f.token_state(), 2, "default state must be frozen");
+    let outcome = f.send_thaw();
+    outcome.assert_success();
+    assert!(outcome.reached(&ids::GATE));
+    println!(
+        "UC1 admission gate CU: {:?}; ACL total CU: {:?}; instruction bytes: {}; metas bytes: {}",
+        outcome.compute_units_for(&ids::GATE),
+        outcome.compute_units_for(&ids::TOKEN_ACL.id),
+        f.thaw(payer).data.len(),
+        f.harness
+            .rpc()
+            .get_account(&list_pda(&f.mint))
+            .unwrap()
+            .data
+            .len()
+    );
+    assert_eq!(f.token_state(), 1);
+    f.freeze();
+    f.harness
+        .send(
+            &[f.thaw(f.investor.pubkey())],
+            &[f.harness.payer(), &f.investor],
+        )
+        .assert_success();
+    f.freeze();
+
+    let mut denied_policy = f.policy.clone();
+    denied_policy.jurisdictions = vec![*b"US"];
+    let before_policy = f
+        .harness
+        .rpc()
+        .get_account(&policy_pda(&f.mint))
+        .unwrap()
+        .data;
+    let before_list = f
+        .harness
+        .rpc()
+        .get_account(&list_pda(&f.mint))
+        .unwrap()
+        .data;
+    let unauthorized = f.harness.send(
+        &[f.configure(&f.investor.pubkey(), &denied_policy)],
+        &[f.harness.payer(), &f.investor],
+    );
+    gate_denied(&unauthorized, GateError::Unauthorized);
+    assert_eq!(
+        f.harness
+            .rpc()
+            .get_account(&policy_pda(&f.mint))
+            .unwrap()
+            .data,
+        before_policy
+    );
+    assert_eq!(
+        f.harness
+            .rpc()
+            .get_account(&list_pda(&f.mint))
+            .unwrap()
+            .data,
+        before_list
+    );
+    f.harness
+        .send(&[f.configure(&payer, &denied_policy)], &[f.harness.payer()])
+        .assert_success();
+    gate_denied(&f.send_thaw(), GateError::Claim);
+    f.harness
+        .send(&[f.configure(&payer, &f.policy)], &[f.harness.payer()])
+        .assert_success();
+
+    for subject in [f.investor.pubkey(), f.token] {
+        gate_denied(
+            &f.harness.send(
+                &[f.status(&subject, Some([1, 0]), &f.investor.pubkey())],
+                &[f.harness.payer(), &f.investor],
+            ),
+            GateError::Unauthorized,
+        );
+        f.harness
+            .send(
+                &[f.status(&subject, Some([1, 0]), &payer)],
+                &[f.harness.payer()],
+            )
+            .assert_success();
+        gate_denied(&f.send_thaw(), GateError::Blocked);
+        // Permissionless initialization cannot clear an existing block.
+        f.harness
+            .send(&[f.status(&subject, None, &payer)], &[f.harness.payer()])
+            .assert_success();
+        assert_eq!(
+            f.harness
+                .rpc()
+                .get_account(&status_pda(&f.mint, &subject))
+                .unwrap()
+                .data,
+            vec![2, 1, 0]
+        );
+        gate_denied(&f.send_thaw(), GateError::Blocked);
+        f.harness
+            .send(
+                &[f.status(&subject, Some([0, 1]), &payer)],
+                &[f.harness.payer()],
+            )
+            .assert_success();
+        gate_denied(&f.send_thaw(), GateError::Invalidated);
+        f.harness
+            .send(
+                &[f.status(&subject, Some([0, 0]), &payer)],
+                &[f.harness.payer()],
+            )
+            .assert_success();
+    }
+    f.send_thaw().assert_success();
+    f.freeze();
+    f.revoke();
+    let outcome = f.send_thaw();
+    assert!(outcome.error.is_some(), "closed SAS evidence must deny");
+    assert_eq!(f.token_state(), 2);
+    // Reissuance does not make the underlying verification fresh.
+    f.issue("DE", f.now - 90000, f.now + 172800);
+    gate_denied(&f.send_thaw(), GateError::Freshness);
+    f.revoke();
+    f.issue("DE", f.now - 1, 0);
+    f.send_thaw().assert_success();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "builds the program with cargo build-sbf; run via `mise run integration`"]
+async fn uc1_fail_closed_account_matrix() {
+    use doors_of_durin::GateError;
+    use support::admission::{Admission, SYSTEM, list_pda, policy_pda, status_pda};
+    let mut f = Admission::start().await;
+    let payer = f.harness.payer().pubkey();
+    let evidence = f.harness.rpc().get_account(&f.evidence).unwrap();
+    let expiry_offset = evidence.data.len() - 40;
+    let mut cases = Vec::new();
+    let mut bytes = evidence.data.clone();
+    bytes[0] = 1;
+    cases.push(("discriminator", ids::SAS.id, bytes, GateError::Malformed));
+    cases.push((
+        "forged owner",
+        SYSTEM,
+        evidence.data.clone(),
+        GateError::Owner,
+    ));
+    cases.push(("truncated", ids::SAS.id, vec![2; 172], GateError::Malformed));
+    let mut bytes = evidence.data.clone();
+    bytes[97..101].copy_from_slice(&u32::MAX.to_le_bytes());
+    cases.push(("length overflow", ids::SAS.id, bytes, GateError::Malformed));
+    let mut bytes = evidence.data.clone();
+    bytes[1] ^= 1;
+    cases.push((
+        "subject substitution",
+        ids::SAS.id,
+        bytes,
+        GateError::Address,
+    ));
+    let mut bytes = evidence.data.clone();
+    bytes[33] ^= 1;
+    cases.push((
+        "issuer substitution",
+        ids::SAS.id,
+        bytes,
+        GateError::Address,
+    ));
+    let mut bytes = evidence.data.clone();
+    bytes[65] ^= 1;
+    cases.push((
+        "schema substitution",
+        ids::SAS.id,
+        bytes,
+        GateError::Address,
+    ));
+    let mut bytes = evidence.data.clone();
+    bytes[expiry_offset..expiry_offset + 8].copy_from_slice(&(-1i64).to_le_bytes());
+    cases.push(("expired", ids::SAS.id, bytes, GateError::Expired));
+    let mut bytes = evidence.data.clone();
+    bytes[105..107].copy_from_slice(b"US");
+    cases.push(("claim denial", ids::SAS.id, bytes, GateError::Claim));
+    let mut bytes = evidence.data.clone();
+    bytes[107..115].copy_from_slice(&(f.now + 86400).to_le_bytes());
+    cases.push((
+        "future verification",
+        ids::SAS.id,
+        bytes,
+        GateError::Freshness,
+    ));
+    for (name, owner, bytes, error) in cases {
+        f.replace(f.evidence, owner, bytes);
+        let outcome = f.send_thaw();
+        println!("UC1 {name}: {:?}", outcome.error);
+        gate_denied(&outcome, error);
+        assert_eq!(f.token_state(), 2);
+    }
+    f.replace(f.evidence, evidence.owner, evidence.data);
+    // Account resolution must never interpret omitted evidence or policy as permission.
+    let valid = f.thaw(payer);
+    for index in 9..valid.accounts.len() {
+        let mut instruction = valid.clone();
+        instruction.accounts.remove(index);
+        let outcome = f.harness.send(&[instruction], &[f.harness.payer()]);
+        assert!(
+            outcome.error.is_some(),
+            "omitting account {index} admitted: {outcome:?}"
+        );
+        println!(
+            "UC1 omitted account {index}: gate reached {}",
+            outcome.reached(&ids::GATE)
+        );
+        assert_eq!(f.token_state(), 2);
+    }
+    for key in [
+        policy_pda(&f.mint),
+        list_pda(&f.mint),
+        status_pda(&f.mint, &f.investor.pubkey()),
+        status_pda(&f.mint, &f.token),
+    ] {
+        let original = f.harness.rpc().get_account(&key).unwrap();
+        f.replace(key, SYSTEM, vec![]);
+        assert!(f.send_thaw().error.is_some());
+        assert_eq!(f.token_state(), 2);
+        f.replace(key, original.owner, original.data);
+        let mut instruction = valid.clone();
+        instruction
+            .accounts
+            .iter_mut()
+            .find(|a| a.pubkey == key)
+            .unwrap()
+            .pubkey = Pubkey::new_unique();
+        assert!(
+            f.harness
+                .send(&[instruction], &[f.harness.payer()])
+                .error
+                .is_some()
+        );
+    }
+    let mut wrong_version = f.policy.clone();
+    wrong_version.schema_version = 2;
+    gate_denied(
+        &f.harness
+            .send(&[f.configure(&payer, &wrong_version)], &[f.harness.payer()]),
+        GateError::Schema,
+    );
+    // A separately created account without ImmutableOwner is not admissible.
+    f.token = f.new_token(false);
+    f.harness
+        .send(&[f.status(&f.token, None, &payer)], &[f.harness.payer()])
+        .assert_success();
+    gate_denied(&f.send_thaw(), GateError::ImmutableOwner);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "builds the program with cargo build-sbf; run via `mise run integration`"]
+async fn uc1_clock_boundaries_and_discovery() {
+    use doors_of_durin::GateError;
+    use solana_rpc_client_types::request::RpcRequest;
+    use solana_transaction::Transaction;
+    use support::admission::{Admission, list_pda};
+    let f = Admission::start().await;
+    let payer = f.harness.payer().pubkey();
+    // Resolve the standard metas via the actual SDK, not our fixture's fixed list.
+    let mut resolved = f.thaw(payer);
+    resolved.accounts.truncate(9);
+    token_acl_interface::offchain::add_extra_account_metas_for_thaw(
+        &mut resolved,
+        &ids::GATE,
+        &payer,
+        &f.token,
+        &f.mint,
+        &f.investor.pubkey(),
+        &token_acl_client::accounts::FlagAccount::find_pda(&f.token).0,
+        |key| {
+            let data = f
+                .harness
+                .rpc()
+                .get_account(&key)
+                .ok()
+                .map(|account| account.data);
+            async move { Ok(data) }
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(resolved.accounts, f.thaw(payer).accounts);
+    f.harness
+        .send(&[resolved], &[f.harness.payer()])
+        .assert_success();
+    f.freeze();
+    let _: serde_json::Value = f
+        .harness
+        .rpc()
+        .send(
+            RpcRequest::Custom {
+                method: "surfnet_pauseClock",
+            },
+            serde_json::json!([]),
+        )
+        .unwrap();
+    let now = on_chain_unix(&f.harness);
+    let original = f.harness.rpc().get_account(&f.evidence).unwrap();
+    let expiry_offset = original.data.len() - 40;
+    // Simulation executes the real SBF while the ledger clock is held constant.
+    // It avoids duplicate signed transactions when the paused blockhash is fixed.
+    for (expiry, verified_at, expected) in [
+        (now + 1, now - 1, None),
+        (now, now - 1, Some(GateError::Expired)),
+        (now - 1, now - 1, Some(GateError::Expired)),
+        (0, now - 1, None),
+        (0, now - 86400, Some(GateError::Freshness)),
+        (0, now - 86399, None),
+        (0, now + 1, Some(GateError::Freshness)),
+    ] {
+        let mut bytes = original.data.clone();
+        bytes[expiry_offset..expiry_offset + 8].copy_from_slice(&expiry.to_le_bytes());
+        bytes[107..115].copy_from_slice(&verified_at.to_le_bytes());
+        f.replace(f.evidence, original.owner, bytes);
+        let tx = Transaction::new_signed_with_payer(
+            &[f.thaw(payer)],
+            Some(&payer),
+            &[f.harness.payer()],
+            f.harness.rpc().get_latest_blockhash().unwrap(),
+        );
+        let result = f.harness.rpc().simulate_transaction(&tx).unwrap().value;
+        assert_eq!(
+            result.err,
+            expected.map(|e| TransactionError::InstructionError(
+                0,
+                InstructionError::Custom(e as u32)
+            )
+            .into()),
+            "{result:?}"
+        );
+        assert!(
+            result
+                .logs
+                .unwrap()
+                .iter()
+                .any(|log| log.starts_with(&format!("Program {} invoke", ids::GATE)))
+        );
+        assert_eq!(on_chain_unix(&f.harness), now);
+    }
+    let _: serde_json::Value = f
+        .harness
+        .rpc()
+        .send(
+            RpcRequest::Custom {
+                method: "surfnet_resumeClock",
+            },
+            serde_json::json!([]),
+        )
+        .unwrap();
+    assert_eq!(
+        f.harness
+            .rpc()
+            .get_account(&list_pda(&f.mint))
+            .unwrap()
+            .data
+            .len(),
+        226
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "builds the program with cargo build-sbf; run via `mise run integration`"]
+async fn uc1_tokenized_attestation_recipient_does_not_restrict_the_fund() {
+    use support::admission::{Admission, claim};
+    let f = Admission::start().await;
+    f.revoke();
+    let (instructions, recipient, attestation_mint) = sas_ix::tokenized_attestation(
+        &f.harness.payer().pubkey(),
+        &f.issuer.pubkey(),
+        &f.credential,
+        &f.schema,
+        &f.evidence,
+        &f.investor.pubkey(),
+        &claim("DE", f.now - 1),
+        f.now + 86400,
+    );
+    for instruction in instructions {
+        f.harness
+            .send(&[instruction], &[f.harness.payer(), &f.issuer])
+            .assert_success();
+    }
+    let evidence = f.harness.rpc().get_account(&f.evidence).unwrap();
+    let decoded = sas::authenticate_and_decode(&evidence.owner, &evidence.data).unwrap();
+    assert_eq!(decoded.token_account, recipient);
+    assert_ne!(
+        recipient, f.token,
+        "credential token and fund token use different accounts"
+    );
+    let recipient_data = f.harness.rpc().get_account(&recipient).unwrap().data;
+    assert_eq!(&recipient_data[..32], attestation_mint.as_ref());
+    assert_eq!(
+        u64::from_le_bytes(recipient_data[64..72].try_into().unwrap()),
+        1
+    );
+    f.send_thaw().assert_success();
+    assert_eq!(f.token_state(), 1);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "builds the program with cargo build-sbf; run via `mise run integration`"]
+async fn uc1_rejects_genuine_but_unaccepted_evidence() {
+    use support::admission::{Admission, claim};
+    let f = Admission::start().await;
+    let payer = f.harness.payer().pubkey();
+    let other_subject = Pubkey::new_unique();
+    let other_issuer = Keypair::new();
+    let other_credential = sas_ix::credential_pda(&other_issuer.pubkey(), "other-issuer");
+    let other_schema = sas_ix::schema_pda(&other_credential, "eligibility");
+    let wrong_schema = sas_ix::schema_pda(&f.credential, "other-schema");
+    f.harness
+        .send(
+            &[
+                sas_ix::create_credential(
+                    &payer,
+                    &other_credential,
+                    &other_issuer.pubkey(),
+                    "other-issuer",
+                    &[other_issuer.pubkey()],
+                ),
+                sas_ix::create_schema(
+                    &payer,
+                    &other_issuer.pubkey(),
+                    &other_credential,
+                    &other_schema,
+                    "eligibility",
+                    "other issuer",
+                    &[12, 8],
+                    &["jurisdiction", "verified_at"],
+                ),
+            ],
+            &[f.harness.payer(), &other_issuer],
+        )
+        .assert_success();
+    f.harness
+        .send(
+            &[sas_ix::create_schema(
+                &payer,
+                &f.issuer.pubkey(),
+                &f.credential,
+                &wrong_schema,
+                "other-schema",
+                "unaccepted schema",
+                &[12, 8],
+                &["jurisdiction", "verified_at"],
+            )],
+            &[f.harness.payer(), &f.issuer],
+        )
+        .assert_success();
+    for (issuer, credential, schema, subject) in [
+        (&f.issuer, f.credential, f.schema, other_subject),
+        (&f.issuer, f.credential, wrong_schema, f.investor.pubkey()),
+        (
+            &other_issuer,
+            other_credential,
+            other_schema,
+            f.investor.pubkey(),
+        ),
+    ] {
+        let evidence = sas_ix::attestation_pda(&credential, &schema, &subject);
+        f.harness
+            .send(
+                &[sas_ix::create_attestation(
+                    &payer,
+                    &issuer.pubkey(),
+                    &credential,
+                    &schema,
+                    &evidence,
+                    &subject,
+                    &claim("DE", f.now - 1),
+                    f.now + 86400,
+                )],
+                &[f.harness.payer(), issuer],
+            )
+            .assert_success();
+        let mut instruction = f.thaw(payer);
+        instruction
+            .accounts
+            .iter_mut()
+            .find(|a| a.pubkey == f.evidence)
+            .unwrap()
+            .pubkey = evidence;
+        let outcome = f.harness.send(&[instruction], &[f.harness.payer()]);
+        assert!(
+            outcome.error.is_some(),
+            "unaccepted genuine evidence admitted"
+        );
+        assert!(
+            !outcome.reached(&ids::GATE),
+            "the fixed discovery policy should reject during resolution"
+        );
+        assert_eq!(f.token_state(), 2);
+    }
+    f.send_thaw().assert_success();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "builds the program with cargo build-sbf; run via `mise run integration`"]
+async fn uc1_governance_follows_authority_rotation_and_blocks_take_precedence() {
+    use doors_of_durin::GateError;
+    use support::admission::Admission;
+    use token_acl_client::{
+        accounts::MintConfig,
+        instructions::{SetAuthority, SetAuthorityInstructionArgs},
+    };
+    let f = Admission::start().await;
+    let payer = f.harness.payer().pubkey();
+    f.harness
+        .send(
+            &[SetAuthority {
+                authority: payer,
+                mint_config: MintConfig::find_pda(&f.mint).0,
+            }
+            .instruction(SetAuthorityInstructionArgs {
+                new_authority: f.issuer.pubkey(),
+            })],
+            &[f.harness.payer()],
+        )
+        .assert_success();
+    gate_denied(
+        &f.harness
+            .send(&[f.configure(&payer, &f.policy)], &[f.harness.payer()]),
+        GateError::Unauthorized,
+    );
+    gate_denied(
+        &f.harness.send(
+            &[f.status(&f.token, Some([1, 0]), &payer)],
+            &[f.harness.payer()],
+        ),
+        GateError::Unauthorized,
+    );
+    let mut policy = f.policy.clone();
+    policy.jurisdictions = vec![*b"US"];
+    f.harness
+        .send(
+            &[
+                f.configure(&f.issuer.pubkey(), &policy),
+                f.status(&f.token, Some([1, 0]), &f.issuer.pubkey()),
+            ],
+            &[f.harness.payer(), &f.issuer],
+        )
+        .assert_success();
+    gate_denied(&f.send_thaw(), GateError::Blocked);
+    let cleared = f.harness.send(
+        &[f.status(&f.token, Some([0, 0]), &f.issuer.pubkey())],
+        &[f.harness.payer(), &f.issuer],
+    );
+    cleared.assert_success();
+    assert!(
+        cleared
+            .logs
+            .iter()
+            .any(|line| line.contains("blocked=0 invalidated=0"))
+    );
+    gate_denied(&f.send_thaw(), GateError::Claim);
 }

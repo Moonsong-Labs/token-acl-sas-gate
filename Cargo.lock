@@ -2023,12 +2023,21 @@ name = "doors-of-durin"
 version = "0.1.0"
 dependencies = [
  "pinocchio",
+ "pinocchio-system",
+ "serde_json",
  "sha2 0.9.9",
+ "solana-address 2.6.1",
  "solana-instruction 3.4.1",
+ "solana-msg 3.1.0",
  "solana-rpc-client-types",
+ "solana-system-interface 3.2.0",
  "solana-transaction 4.1.6",
  "solana-transaction-error 3.3.2",
+ "spl-discriminator",
+ "spl-tlv-account-resolution",
+ "spl-token-2022-interface 3.1.1",
  "surfpool-sdk",
+ "token-acl-client",
  "token-acl-interface",
  "tokio",
 ]
@@ -4727,6 +4736,16 @@ dependencies = [
  "solana-define-syscall 5.2.0",
  "solana-instruction-view",
  "solana-program-error 3.0.1",
+]
+
+[[package]]
+name = "pinocchio-system"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f3ae2ee67b42e2ac797dd88312da473c895660e270d8093e0ba2749b885b5778"
+dependencies = [
+ "pinocchio",
+ "solana-address 2.6.1",
 ]
 
 [[package]]
@@ -10583,6 +10602,32 @@ name = "tinyvec"
 version = "1.13.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fd3ca314f692efd6c868f8408f53fe444634a845f96c028b97d35f6a1f79f0ee"
+
+[[package]]
+name = "token-acl-client"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c3e64e0313f2c3a6cd64644a809e21f591576395f0af5827bd805ae83343c800"
+dependencies = [
+ "borsh 1.8.1",
+ "num-derive",
+ "num-traits",
+ "solana-account 3.4.0",
+ "solana-account-info 3.1.1",
+ "solana-cpi 3.1.0",
+ "solana-instruction 3.4.1",
+ "solana-program-error 3.0.1",
+ "solana-program-option 3.1.0",
+ "solana-program-pack 3.1.0",
+ "solana-pubkey 4.2.1",
+ "solana-system-interface 3.2.0",
+ "spl-associated-token-account-interface",
+ "spl-tlv-account-resolution",
+ "spl-token-2022-interface 2.1.0",
+ "spl-token-metadata-interface 0.8.0",
+ "thiserror 2.0.20",
+ "token-acl-interface",
+]
 
 [[package]]
 name = "token-acl-interface"

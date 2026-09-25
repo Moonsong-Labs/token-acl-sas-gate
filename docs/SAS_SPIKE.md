@@ -145,9 +145,10 @@ prefix + `"DE"`), confirming the byte layout in §2 end-to-end. Our decoder read
 field of the account SAS actually wrote. The probe also reads the SAS-owned schema, checks its
 single `String` field is named `jurisdiction`, and decodes the stored claim value as `DE`.
 
-**On-chain decode CU is still TODO** — it can only be measured once the actual gate
-program decodes during a thaw callback; the spike decoder runs host-side in the test.
-Deferred to the UC1 build (step 3).
+**On-chain validation now runs in the UC1 callback.** The integration suite prints
+callback CU and total Token ACL CU for a real thaw. See `ADMISSION.md` and
+`uc1_admission_and_policy_governance` in `tests/e2e.rs`. The original spike decoder
+remains an independent host-side layout oracle.
 
 **Provenance (reproducibility) — resolved by the surfnet harness (PR #4).** §2–§4 are read
 from SAS source at `5b64cf0`; the probe now runs against the SAS binary committed under
@@ -210,20 +211,15 @@ attestation per subject per (credential, schema): renewal is **close the old att
 recreate at the same `PDA(credential, schema, subject)`** with new expiry/data — not a fresh
 nonce (§3). The step-5 lifecycle build owns this.
 
-**`token_account` is a different property — not the subject, and not an asset restriction.**
-Three identities are easy to conflate:
+**`token_account` holds the tokenized attestation.** It identifies the recipient
+token account for the attestation's own mint, and is all-zeros for non-tokenized
+attestations. It does not restrict which regulated asset the evidence may authorize.
+The gate must not compare it with the regulated token account being thawed. Subject
+binding stays on `nonce`.
 
-- **`nonce`** — what the attestation is keyed to (for us, the subject wallet); part of the PDA.
-- **attestation PDA** — where the SAS record itself lives.
-- **`token_account`** — only meaningful for a *tokenized* attestation: the ATA that holds the
-  non-transferable Token-2022 "badge" SAS mints to represent the record
-  (`create_tokenized_attestation.rs` sets it from `recipient_token_account_info`). Tokenizing
-  changes nothing about what is claimed — it just gives the credential a wallet-visible token.
-
-**Our evidence is ordinary (non-tokenized), so `token_account` is always `Pubkey::default()`
-and the gate never reads it.** It does **not** restrict which regulated asset the evidence may
-authorize, so the gate must **not** compare it against the token account being thawed — that
-would reject valid evidence. Asset-scoping, if a policy needs it, is defined separately.
+The pinned [tokenized-attestation processor](https://github.com/solana-foundation/solana-attestation-service/blob/5b64cf09843d62ca800f7d73f8438ad3505de70e/program/src/processor/create_tokenized_attestation.rs)
+passes `recipient_token_account_info` into attestation creation, creates a dedicated
+attestation mint, and mints its token into that recipient account.
 
 **Rejected for the MVP:** carrying the subject as an explicit `subject: Pubkey` field inside
 the schema `data` — more self-documenting but couples binding to claim decoding, adds a field
