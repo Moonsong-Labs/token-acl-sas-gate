@@ -52,8 +52,10 @@ mise run dev        # http://localhost:3000
 Verified end to end against surfpool 1.6.0: the seed reports SAS and Token ACL as
 `executable` (forked from mainnet) and the page serves at `localhost:3000`.
 
-Override the endpoint with `NEXT_PUBLIC_RPC_URL` (see `.env.local.example`) — e.g.
-a hosted surfnet or devnet for a shared demo.
+Override the endpoint with `NEXT_PUBLIC_RPC_URL` in `.env.local` (see
+`.env.local.example`) — e.g. a hosted surfnet or devnet for a shared demo. Both
+the page and `mise run seed` read it from `.env.local`, so they always target the
+same surfnet.
 
 ## Deploying the gate to the surfnet
 

@@ -8,9 +8,24 @@
 //
 // Run: `npm run seed` (after `npm run surfnet`).
 
+import { existsSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { address, createSolanaRpc } from "@solana/kit";
 
-const RPC_URL = process.env.RPC_URL ?? "http://127.0.0.1:8899";
+// Next loads app/.env.local automatically for the page; a plain node script does
+// not, so load it here and read the SAME variable the frontend does
+// (src/lib/rpc.ts) — otherwise preflight could check a different surfnet than
+// the app. `RPC_URL` remains a convenience override for one-off runs.
+const envLocal = join(dirname(fileURLToPath(import.meta.url)), "..", ".env.local");
+if (existsSync(envLocal)) {
+  process.loadEnvFile(envLocal);
+}
+
+const RPC_URL =
+  process.env.NEXT_PUBLIC_RPC_URL ??
+  process.env.RPC_URL ??
+  "http://127.0.0.1:8899";
 
 // SAS and Token ACL are required — the surfnet forks them from mainnet. The gate
 // is optional until it is built and deployed, so its absence is a warning.
