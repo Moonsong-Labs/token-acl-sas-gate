@@ -142,7 +142,8 @@ into SAS adds no security (SAS has no "verify" instruction anyway) and costs CU.
 pinned SAS binary in an offline surfnet):** an attestation with a one-field
 `jurisdiction = "DE"` claim is **179 bytes** — exactly `173 + L` with `L = 6` (4-byte length
 prefix + `"DE"`), confirming the byte layout in §2 end-to-end. Our decoder reads back every
-field of the account SAS actually wrote.
+field of the account SAS actually wrote. The probe also reads the SAS-owned schema, checks its
+single `String` field is named `jurisdiction`, and decodes the stored claim value as `DE`.
 
 **On-chain decode CU is still TODO** — it can only be measured once the actual gate
 program decodes during a thaw callback; the spike decoder runs host-side in the test.

@@ -189,6 +189,16 @@ async fn sas_issue_decode_and_lifecycle() {
     );
     assert_eq!(decoded.expiry, expiry, "expiry round-trips");
     assert_eq!(decoded.data, claim, "claim bytes round-trip");
+    let schema_account = harness.rpc().get_account(&schema).expect("schema deployed");
+    let jurisdiction = sas::decode_single_string_claim(
+        &schema_account.owner,
+        &schema_account.data,
+        &credential,
+        "jurisdiction",
+        &decoded.data,
+    )
+    .expect("schema decodes the attestation's jurisdiction claim");
+    assert_eq!(jurisdiction, "DE");
     assert_eq!(
         decoded.token_account,
         Pubkey::default(),

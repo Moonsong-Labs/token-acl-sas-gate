@@ -2,9 +2,9 @@
 //!
 //! SAS packs on-chain accounts as manual little-endian bytes with a 1-byte
 //! discriminator (not Borsh, not zero-copy). See `docs/SAS_SPIKE.md` §2/§4.
-//! This module replicates exactly the two authenticity checks the future gate
-//! must perform, plus the field parse, so the probe can cross-check its output
-//! against the first-party `Attestation::from_bytes` decoder.
+//! This module checks account ownership and the attestation discriminator,
+//! then parses the fields that the future gate needs. The integration probe
+//! verifies the result against an account created by the pinned SAS binary.
 //!
 //! Attestation byte map (total `173 + L`, all integers little-endian):
 //! ```text
@@ -25,6 +25,8 @@ use surfpool_sdk::Pubkey;
 /// Attestation discriminator byte (`Credential = 0`, `Schema = 1`,
 /// `Attestation = 2`).
 const ATTESTATION_DISCRIMINATOR: u8 = 2;
+const SCHEMA_DISCRIMINATOR: u8 = 1;
+const STRING_LAYOUT: u8 = 12;
 
 /// Byte length of an attestation with an empty `data` field; the smallest a
 /// genuine attestation account can be.
@@ -92,6 +94,53 @@ pub fn authenticate_and_decode(
     })
 }
 
+/// Read the spike's one-field String claim using the actual SAS schema account.
+/// This verifies that the attestation bytes mean the named claim we expect,
+/// rather than merely matching the bytes sent in CreateAttestation.
+pub fn decode_single_string_claim(
+    owner: &Pubkey,
+    schema_data: &[u8],
+    credential: &Pubkey,
+    field_name: &str,
+    claim_data: &[u8],
+) -> Result<String, &'static str> {
+    if owner != &ids::SAS.id {
+        return Err("schema owner is not the SAS program");
+    }
+
+    let mut offset = 0;
+    if take(schema_data, &mut offset, 1)? != [SCHEMA_DISCRIMINATOR] {
+        return Err("account is not a schema");
+    }
+    if take(schema_data, &mut offset, 32)? != credential.as_ref() {
+        return Err("schema belongs to another credential");
+    }
+    let _name = take_len_prefixed(schema_data, &mut offset)?;
+    let _description = take_len_prefixed(schema_data, &mut offset)?;
+    if take_len_prefixed(schema_data, &mut offset)? != [STRING_LAYOUT] {
+        return Err("schema is not a single String field");
+    }
+
+    let names = take_len_prefixed(schema_data, &mut offset)?;
+    let mut name_offset = 0;
+    if take_len_prefixed(names, &mut name_offset)? != field_name.as_bytes()
+        || name_offset != names.len()
+    {
+        return Err("schema field name does not match");
+    }
+    let _is_paused = take(schema_data, &mut offset, 1)?;
+    if take(schema_data, &mut offset, 1)? != [1] || offset != schema_data.len() {
+        return Err("unexpected schema version or trailing data");
+    }
+
+    let mut claim_offset = 0;
+    let value = take_len_prefixed(claim_data, &mut claim_offset)?;
+    if claim_offset != claim_data.len() {
+        return Err("claim has trailing data");
+    }
+    String::from_utf8(value.to_vec()).map_err(|_| "claim is not UTF-8")
+}
+
 /// Our read-time validity rule. SAS only checks expiry at creation, so the gate
 /// must enforce it: `0` means never expires, otherwise the current time must be
 /// strictly before expiry (matching `now == expiry` = expired).
@@ -105,6 +154,22 @@ fn read_array<const N: usize>(bytes: &[u8], offset: usize) -> [u8; N] {
     let mut out = [0u8; N];
     out.copy_from_slice(&bytes[offset..offset + N]);
     out
+}
+
+fn take<'a>(bytes: &'a [u8], offset: &mut usize, len: usize) -> Result<&'a [u8], &'static str> {
+    let end = offset.checked_add(len).ok_or("field length overflows")?;
+    let field = bytes
+        .get(*offset..end)
+        .ok_or("field exceeds account data")?;
+    *offset = end;
+    Ok(field)
+}
+
+fn take_len_prefixed<'a>(bytes: &'a [u8], offset: &mut usize) -> Result<&'a [u8], &'static str> {
+    let len_bytes: [u8; 4] = take(bytes, offset, 4)?
+        .try_into()
+        .map_err(|_| "invalid length prefix")?;
+    take(bytes, offset, u32::from_le_bytes(len_bytes) as usize)
 }
 
 #[cfg(test)]
