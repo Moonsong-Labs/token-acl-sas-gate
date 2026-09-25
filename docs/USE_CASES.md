@@ -24,7 +24,9 @@ Token ACL (sRFC37) gates the **holder set**, not transfers.
     and **permissionless thaw** is enabled. Without both, the investor-facing path doesn't exist  
     (`IMPLEMENTATION.md` §2).
     
-4.  **Issue** — approved issuer writes a SAS attestation (subject = investor wallet).
+4.  **Issue** — approved issuer writes a SAS attestation (subject = investor wallet). SAS has no  
+    `subject` field, so the subject is carried in the attestation's `nonce` — the issuer sets  
+    `nonce = investor wallet` (`IMPLEMENTATION.md` §4.3).
     
 5.  **Thaw** — investor (or a **relayer**) calls `thaw-permissionless`; Token ACL CPIs our gate,  
     which validates the evidence and allows or denies. Thawed accounts receive tokens and perform  
@@ -267,15 +269,19 @@ must not be reported as policy decisions.
     only explicit blocks and invalidation records that cannot be derived. Don't duplicate expiry or  
     revocation into policy state.
     
-3.  **SAS lifecycle semantics — decide from the spike, then update these docs.** Public docs show  
+3.  **SAS lifecycle semantics — DECIDED (spike done, commit `5b64cf0`).** Public docs show  
     explicit `expiry` (Unix seconds) and schema-serialized `data`; the pinned version's  
-    revoke/close, renewal/supersession and invalidation-granularity behaviour is **not verified**  
-    (`IMPLEMENTATION.md` §3, §9).
+    revoke/close, renewal/supersession and invalidation-granularity behaviour is now **verified**:  
+    revocation = account closure (no flag/tombstone), **no** renewal instruction and **no** native  
+    per-subject/per-claim invalidation, so reissuance does not auto-supersede and any per-subject  
+    invalidation is **ours** to build; subject binding = attestation `nonce` (no `subject` field).  
+    Full findings in `SAS_SPIKE.md`; predicate and risks in `IMPLEMENTATION.md` §3–§4, §9.
     
 
 ## Data policy — reading vs storage
 
-**In SAS accounts:** the attestation itself (subject, schema/type, issuer, expiry, serialized  
+**In SAS accounts:** the attestation itself (subject — carried in `nonce`, see  
+`IMPLEMENTATION.md` §4.3 — schema/type, issuer, expiry, serialized  
 claims). Readable on-chain; we do not copy or mirror it.  
 **Read by the gate at thaw time:** those fields plus the decoded claim values needed to evaluate  
 the mint predicate. Nothing is retained from that read.  
