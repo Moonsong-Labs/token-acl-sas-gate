@@ -5,12 +5,13 @@
   "type": "module",
   "description": "Demo web frontend for the Token ACL gate, driven against a local surfnet.",
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev --hostname 127.0.0.1",
     "build": "next build",
-    "start": "next start",
+    "start": "next start --hostname 127.0.0.1",
     "typecheck": "tsc --noEmit",
     "seed": "tsx scripts/seed.ts",
-    "surfnet": "surfpool start --no-tui --no-studio --no-deploy -y --network mainnet --airdrop-amount 0"
+    "surfnet": "surfpool start --offline --no-tui --no-studio --no-deploy -y --airdrop-amount 0",
+    "test:e2e": "npm run build && playwright test"
   },
   "dependencies": {
     "@solana/kit": "^2",
@@ -19,6 +20,7 @@
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@types/node": "^22.10.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
