@@ -36,6 +36,8 @@ pub struct Admission {
     pub mint: Pubkey,
     pub token: Pubkey,
     pub investor: Keypair,
+    /// Aster Identity administers the credential; its desk signs attestations.
+    pub credential_authority: Keypair,
     pub issuer: Keypair,
     pub credential: Pubkey,
     pub schema: Pubkey,
@@ -47,32 +49,33 @@ impl Admission {
     pub async fn start() -> Self {
         let harness = Harness::start().await;
         let payer = harness.payer().pubkey();
+        let credential_authority = Keypair::new();
         let issuer = Keypair::new();
         let investor = Keypair::new();
-        let credential = sas_ix::credential_pda(&issuer.pubkey(), "uc1-issuer");
-        let schema = sas_ix::schema_pda(&credential, "eligibility");
+        let credential = sas_ix::credential_pda(&credential_authority.pubkey(), "Aster Identity");
+        let schema = sas_ix::schema_pda(&credential, "investor-jurisdiction");
         harness
             .send(
                 &[
                     sas_ix::create_credential(
                         &payer,
                         &credential,
-                        &issuer.pubkey(),
-                        "uc1-issuer",
+                        &credential_authority.pubkey(),
+                        "Aster Identity",
                         &[issuer.pubkey()],
                     ),
                     sas_ix::create_schema(
                         &payer,
-                        &issuer.pubkey(),
+                        &credential_authority.pubkey(),
                         &credential,
                         &schema,
-                        "eligibility",
-                        "UC1 fixture; nonce is subject",
+                        "investor-jurisdiction",
+                        "Aster verified investor jurisdiction",
                         &[12, 8],
                         &["jurisdiction", "verified_at"],
                     ),
                 ],
-                &[harness.payer(), &issuer],
+                &[harness.payer(), &credential_authority],
             )
             .assert_success();
         let mint_key = Keypair::new();
@@ -135,6 +138,7 @@ impl Admission {
             mint,
             token: Pubkey::default(),
             investor,
+            credential_authority,
             issuer,
             credential,
             schema,

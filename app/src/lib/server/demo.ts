@@ -19,6 +19,7 @@ export type Manifest = {
   rpc: string;
   payerSeed: string;
   issuerSeed: string;
+  credentialAuthority: Address;
   mint: Address;
   credential: Address;
   schema: Address;
@@ -36,6 +37,8 @@ export async function manifest(): Promise<Manifest> {
   } catch {
     throw new Error("Demo is not seeded. Run mise run seed from app/.");
   }
+  if (!data.credentialAuthority)
+    throw new Error("Demo role setup changed. Run mise run seed again.");
   if (data.rpc !== endpoint())
     throw new Error("Demo RPC changed. Run mise run seed again.");
   return data;
@@ -128,7 +131,11 @@ export async function snapshot() {
       name: "Durin Private Credit Fund",
       mint: m.mint,
       jurisdictions: countries,
-      issuer: readKey(policy.data, 1),
+      credential: readKey(policy.data, 1),
+      authority: m.credentialAuthority,
+      authorityName: "Aster Identity",
+      issuer: (await signer(m.issuerSeed)).address,
+      issuerName: "Aster Verification Desk",
       schema: readKey(policy.data, 33),
       maxAge: Number(policy.data.readBigInt64LE(66)),
     },

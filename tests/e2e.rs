@@ -118,11 +118,12 @@ async fn sas_issue_decode_and_lifecycle() {
     let harness = Harness::start().await;
     let payer = harness.payer().pubkey();
 
-    // The issuer is the credential authority and its own authorized signer; the
-    // subject is the investor wallet the credential binds to (nonce = subject).
+    // Aster Identity delegates issuance to Aster Verification Desk.
+    // Alice Adler is the investor bound through the attestation nonce.
     let authority = Keypair::new();
+    let issuer = Keypair::new();
     let subject = Keypair::new().pubkey();
-    let credential = sas_ix::credential_pda(&authority.pubkey(), "doors-of-durin-spike");
+    let credential = sas_ix::credential_pda(&authority.pubkey(), "Aster Identity");
     let schema = sas_ix::schema_pda(&credential, "jurisdiction");
     let attestation = sas_ix::attestation_pda(&credential, &schema, &subject);
 
@@ -134,8 +135,8 @@ async fn sas_issue_decode_and_lifecycle() {
                     &payer,
                     &credential,
                     &authority.pubkey(),
-                    "doors-of-durin-spike",
-                    &[authority.pubkey()],
+                    "Aster Identity",
+                    &[issuer.pubkey()],
                 ),
                 sas_ix::create_schema(
                     &payer,
@@ -160,7 +161,7 @@ async fn sas_issue_decode_and_lifecycle() {
         .send(
             &[sas_ix::create_attestation(
                 &payer,
-                &authority.pubkey(),
+                &issuer.pubkey(),
                 &credential,
                 &schema,
                 &attestation,
@@ -168,7 +169,7 @@ async fn sas_issue_decode_and_lifecycle() {
                 &claim,
                 expiry,
             )],
-            &[harness.payer(), &authority],
+            &[harness.payer(), &issuer],
         )
         .assert_success();
 
@@ -189,7 +190,7 @@ async fn sas_issue_decode_and_lifecycle() {
     assert_eq!(decoded.schema, schema);
     assert_eq!(
         decoded.signer,
-        authority.pubkey(),
+        issuer.pubkey(),
         "signer is the credential-authorized signer, not the subject",
     );
     assert_eq!(decoded.expiry, expiry, "expiry round-trips");
@@ -226,7 +227,7 @@ async fn sas_issue_decode_and_lifecycle() {
     let rejected = harness.send(
         &[sas_ix::create_attestation(
             &payer,
-            &authority.pubkey(),
+            &issuer.pubkey(),
             &credential,
             &schema,
             &pre_expired,
@@ -234,7 +235,7 @@ async fn sas_issue_decode_and_lifecycle() {
             &claim,
             -100,
         )],
-        &[harness.payer(), &authority],
+        &[harness.payer(), &issuer],
     );
     assert_eq!(
         rejected.error,
@@ -258,11 +259,11 @@ async fn sas_issue_decode_and_lifecycle() {
         .send(
             &[sas_ix::close_attestation(
                 &payer,
-                &authority.pubkey(),
+                &issuer.pubkey(),
                 &credential,
                 &attestation,
             )],
-            &[harness.payer(), &authority],
+            &[harness.payer(), &issuer],
         )
         .assert_success();
     match harness.rpc().get_account(&attestation) {
@@ -280,7 +281,7 @@ async fn sas_issue_decode_and_lifecycle() {
         .send(
             &[sas_ix::create_attestation(
                 &payer,
-                &authority.pubkey(),
+                &issuer.pubkey(),
                 &credential,
                 &schema,
                 &attestation,
@@ -288,7 +289,7 @@ async fn sas_issue_decode_and_lifecycle() {
                 &claim,
                 renewed_expiry,
             )],
-            &[harness.payer(), &authority],
+            &[harness.payer(), &issuer],
         )
         .assert_success();
     let renewed = harness
@@ -695,6 +696,7 @@ async fn uc1_tokenized_attestation_recipient_does_not_restrict_the_fund() {
     f.revoke();
     let (instructions, recipient, attestation_mint) = sas_ix::tokenized_attestation(
         &f.harness.payer().pubkey(),
+        &f.credential_authority.pubkey(),
         &f.issuer.pubkey(),
         &f.credential,
         &f.schema,
@@ -703,9 +705,12 @@ async fn uc1_tokenized_attestation_recipient_does_not_restrict_the_fund() {
         &claim("DE", f.now - 1),
         f.now + 86400,
     );
-    for instruction in instructions {
+    for (instruction, signer) in instructions
+        .into_iter()
+        .zip([&f.credential_authority, &f.issuer])
+    {
         f.harness
-            .send(&[instruction], &[f.harness.payer(), &f.issuer])
+            .send(&[instruction], &[f.harness.payer(), signer])
             .assert_success();
     }
     let evidence = f.harness.rpc().get_account(&f.evidence).unwrap();
@@ -725,6 +730,74 @@ async fn uc1_tokenized_attestation_recipient_does_not_restrict_the_fund() {
     assert_eq!(f.token_state(), 1);
 }
 
+/// Aster Identity governs schemas; Aster Verification Desk only issues evidence.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "builds the program with cargo build-sbf; run via `mise run integration`"]
+async fn uc1_separates_credential_authority_and_attestation_issuer() {
+    use support::admission::{Admission, claim};
+    let f = Admission::start().await;
+    let payer = f.harness.payer().pubkey();
+    assert_ne!(f.credential_authority.pubkey(), f.issuer.pubkey());
+    assert_ne!(payer, f.credential_authority.pubkey());
+    assert_ne!(payer, f.issuer.pubkey());
+    let evidence = f.harness.rpc().get_account(&f.evidence).unwrap();
+    let decoded = sas::authenticate_and_decode(&evidence.owner, &evidence.data).unwrap();
+    assert_eq!(decoded.signer, f.issuer.pubkey());
+    let unauthorized_schema = sas_ix::schema_pda(&f.credential, "desk-created-schema");
+    let rejected = f.harness.send(
+        &[sas_ix::create_schema(
+            &payer,
+            &f.issuer.pubkey(),
+            &f.credential,
+            &unauthorized_schema,
+            "desk-created-schema",
+            "Issuer cannot administer schemas",
+            &[12],
+            &["jurisdiction"],
+        )],
+        &[f.harness.payer(), &f.issuer],
+    );
+    assert!(rejected.reached(&ids::SAS.id));
+    assert_eq!(
+        rejected.error,
+        Some(TransactionError::InstructionError(
+            0,
+            InstructionError::IncorrectAuthority
+        )),
+        "{:?}",
+        rejected.logs
+    );
+    assert!(f.harness.rpc().get_account(&unauthorized_schema).is_err());
+    let subject = Pubkey::new_unique();
+    let unauthorized_evidence = sas_ix::attestation_pda(&f.credential, &f.schema, &subject);
+    let rejected = f.harness.send(
+        &[sas_ix::create_attestation(
+            &payer,
+            &f.credential_authority.pubkey(),
+            &f.credential,
+            &f.schema,
+            &unauthorized_evidence,
+            &subject,
+            &claim("DE", f.now),
+            f.now + 86400,
+        )],
+        &[f.harness.payer(), &f.credential_authority],
+    );
+    assert!(rejected.reached(&ids::SAS.id));
+    assert_eq!(
+        rejected.error,
+        Some(TransactionError::InstructionError(
+            0,
+            InstructionError::Custom(5)
+        )),
+        "{:?}",
+        rejected.logs
+    );
+    assert!(f.harness.rpc().get_account(&unauthorized_evidence).is_err());
+    f.send_thaw().assert_success();
+    assert_eq!(f.token_state(), 1);
+}
+
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "builds the program with cargo build-sbf; run via `mise run integration`"]
 async fn uc1_rejects_genuine_but_unaccepted_evidence() {
@@ -732,47 +805,48 @@ async fn uc1_rejects_genuine_but_unaccepted_evidence() {
     let f = Admission::start().await;
     let payer = f.harness.payer().pubkey();
     let other_subject = Pubkey::new_unique();
+    let other_authority = Keypair::new();
     let other_issuer = Keypair::new();
-    let other_credential = sas_ix::credential_pda(&other_issuer.pubkey(), "other-issuer");
-    let other_schema = sas_ix::schema_pda(&other_credential, "eligibility");
-    let wrong_schema = sas_ix::schema_pda(&f.credential, "other-schema");
+    let other_credential = sas_ix::credential_pda(&other_authority.pubkey(), "Boreal Identity");
+    let other_schema = sas_ix::schema_pda(&other_credential, "investor-jurisdiction");
+    let wrong_schema = sas_ix::schema_pda(&f.credential, "professional-membership");
     f.harness
         .send(
             &[
                 sas_ix::create_credential(
                     &payer,
                     &other_credential,
-                    &other_issuer.pubkey(),
-                    "other-issuer",
+                    &other_authority.pubkey(),
+                    "Boreal Identity",
                     &[other_issuer.pubkey()],
                 ),
                 sas_ix::create_schema(
                     &payer,
-                    &other_issuer.pubkey(),
+                    &other_authority.pubkey(),
                     &other_credential,
                     &other_schema,
-                    "eligibility",
+                    "investor-jurisdiction",
                     "other issuer",
                     &[12, 8],
                     &["jurisdiction", "verified_at"],
                 ),
             ],
-            &[f.harness.payer(), &other_issuer],
+            &[f.harness.payer(), &other_authority],
         )
         .assert_success();
     f.harness
         .send(
             &[sas_ix::create_schema(
                 &payer,
-                &f.issuer.pubkey(),
+                &f.credential_authority.pubkey(),
                 &f.credential,
                 &wrong_schema,
-                "other-schema",
+                "professional-membership",
                 "unaccepted schema",
                 &[12, 8],
                 &["jurisdiction", "verified_at"],
             )],
-            &[f.harness.payer(), &f.issuer],
+            &[f.harness.payer(), &f.credential_authority],
         )
         .assert_success();
     for (issuer, credential, schema, subject) in [
@@ -833,6 +907,7 @@ async fn uc1_governance_follows_authority_rotation_and_blocks_take_precedence() 
     };
     let f = Admission::start().await;
     let payer = f.harness.payer().pubkey();
+    let successor_fund_operator = Keypair::new();
     f.harness
         .send(
             &[SetAuthority {
@@ -840,7 +915,7 @@ async fn uc1_governance_follows_authority_rotation_and_blocks_take_precedence() 
                 mint_config: MintConfig::find_pda(&f.mint).0,
             }
             .instruction(SetAuthorityInstructionArgs {
-                new_authority: f.issuer.pubkey(),
+                new_authority: successor_fund_operator.pubkey(),
             })],
             &[f.harness.payer()],
         )
@@ -862,16 +937,16 @@ async fn uc1_governance_follows_authority_rotation_and_blocks_take_precedence() 
     f.harness
         .send(
             &[
-                f.configure(&f.issuer.pubkey(), &policy),
-                f.status(&f.token, Some([1, 0]), &f.issuer.pubkey()),
+                f.configure(&successor_fund_operator.pubkey(), &policy),
+                f.status(&f.token, Some([1, 0]), &successor_fund_operator.pubkey()),
             ],
-            &[f.harness.payer(), &f.issuer],
+            &[f.harness.payer(), &successor_fund_operator],
         )
         .assert_success();
     gate_denied(&f.send_thaw(), GateError::Blocked);
     let cleared = f.harness.send(
-        &[f.status(&f.token, Some([0, 0]), &f.issuer.pubkey())],
-        &[f.harness.payer(), &f.issuer],
+        &[f.status(&f.token, Some([0, 0]), &successor_fund_operator.pubkey())],
+        &[f.harness.payer(), &successor_fund_operator],
     );
     cleared.assert_success();
     assert!(

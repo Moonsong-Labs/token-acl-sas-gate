@@ -49,6 +49,7 @@ async function main() {
     await rpc("surfnet_writeProgram", [id, binary.toString("hex"), 0]);
   }
   const payerSeed = randomBytes(32).toString("hex");
+  const authority = await signer(randomBytes(32).toString("hex"));
   const issuerSeed = randomBytes(32).toString("hex");
   const payer = await signer(payerSeed);
   const issuer = await signer(issuerSeed);
@@ -57,29 +58,29 @@ async function main() {
   const credential = await pda(
     SAS,
     "credential",
-    key(issuer.address),
-    "uc1-demo",
+    key(authority.address),
+    "Aster Identity",
   );
   const schema = await pda(
     SAS,
     "schema",
     key(credential),
-    "eligibility",
+    "investor-jurisdiction",
     Buffer.from([1]),
   );
   await send(payer, [
-    ix(SAS, bytes([0], str("uc1-demo"), num(1, 4), key(issuer.address)), [
+    ix(SAS, bytes([0], str("Aster Identity"), num(1, 4), key(issuer.address)), [
       signed(payer, true),
       rw(credential),
-      signed(issuer),
+      signed(authority),
       ro(SYSTEM),
     ]),
     ix(
       SAS,
       bytes(
         [1],
-        str("eligibility"),
-        str("UC1 demo fixture"),
+        str("investor-jurisdiction"),
+        str("Aster verified investor jurisdiction"),
         str(Buffer.from([12, 8])),
         num(2, 4),
         str("jurisdiction"),
@@ -87,7 +88,7 @@ async function main() {
       ),
       [
         signed(payer, true),
-        signed(issuer),
+        signed(authority),
         ro(credential),
         rw(schema),
         ro(SYSTEM),
@@ -136,8 +137,8 @@ async function main() {
   ]);
   const investors = {} as Manifest["investors"];
   for (const [id, name, jurisdiction] of [
-    ["alice", "Alice", "DE"],
-    ["bob", "Bob", "US"],
+    ["alice", "Alice Adler", "DE"],
+    ["bob", "Bob Brooks", "US"],
   ] as const) {
     const wallet = await signer(randomBytes(32).toString("hex"));
     const token = await signer(randomBytes(32).toString("hex"));
@@ -188,6 +189,7 @@ async function main() {
     rpc: endpoint(),
     payerSeed,
     issuerSeed,
+    credentialAuthority: authority.address,
     mint: mint.address,
     credential,
     schema,
@@ -199,7 +201,7 @@ async function main() {
   });
   await rename(manifestPath() + ".tmp", manifestPath());
   console.log(
-    "UC1 ready: one DE/FR fund, Alice (DE), Bob (US), both frozen and without credentials.",
+    "UC1 ready: one DE/FR fund, Alice Adler (DE), Bob Brooks (US), both frozen and without credentials.",
   );
 }
 main().catch((e) => {

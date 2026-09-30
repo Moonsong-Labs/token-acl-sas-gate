@@ -98,8 +98,10 @@ export default function Home() {
                 <dd>Less than {state.fund.maxAge / 3600} hours</dd>
               </div>
               <div>
-                <dt>Approved issuer</dt>
-                <dd title={state.fund.issuer}>{short(state.fund.issuer)}</dd>
+                <dt>Credential authority</dt>
+                <dd title={state.fund.authority}>{state.fund.authorityName}</dd>
+                <dt>Authorized issuer</dt>
+                <dd title={state.fund.issuer}>{state.fund.issuerName}</dd>
               </div>
             </dl>
           </section>
@@ -141,8 +143,8 @@ export default function Home() {
                 ))}
               </select>
               <p className="hint">
-                Alice has a DE jurisdiction. Bob has a US jurisdiction. Both
-                start without credentials.
+                Alice Adler has a DE jurisdiction. Bob Brooks has a US
+                jurisdiction. Both start without credentials.
               </p>
               <button className="secondary" onClick={refresh} disabled={busy}>
                 Refresh chain state

@@ -1,5 +1,6 @@
+import { getAddressDecoder } from "@solana/kit";
 import { test, expect } from "@playwright/test";
-async function tokenState(token: string) {
+async function accountData(token: string) {
   const response = await fetch("http://127.0.0.1:18999", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -10,10 +11,7 @@ async function tokenState(token: string) {
       params: [token, { encoding: "base64", commitment: "confirmed" }],
     }),
   });
-  return Buffer.from(
-    (await response.json()).result.value.data[0],
-    "base64",
-  )[108];
+  return Buffer.from((await response.json()).result.value.data[0], "base64");
 }
 test("UC1: missing evidence denies, DE admits, US denies", async ({
   page,
@@ -67,8 +65,35 @@ test("UC1: missing evidence denies, DE admits, US denies", async ({
   const response = await request.get("/api/demo");
   const state = await response.json();
   expect(JSON.stringify(state)).not.toMatch(/Seed|privateKey|secretKey/);
-  expect(await tokenState(state.investors[0].token)).toBe(1);
-  expect(await tokenState(state.investors[1].token)).toBe(2);
+  // Check the on-chain delegation, not just the labels or manifest keys.
+  const decodeKey = (data: Buffer, offset: number) =>
+    getAddressDecoder().decode(data.subarray(offset, offset + 32));
+  const credential = await accountData(state.fund.credential);
+  expect(credential[0]).toBe(0);
+  expect(decodeKey(credential, 1)).toBe(state.fund.authority);
+  expect(state.fund.authority).not.toBe(state.fund.issuer);
+  const nameLength = credential.readUInt32LE(33);
+  expect(credential.subarray(37, 37 + nameLength).toString()).toBe(
+    "Aster Identity",
+  );
+  expect(credential.readUInt32LE(37 + nameLength)).toBe(1);
+  expect(decodeKey(credential, 41 + nameLength)).toBe(state.fund.issuer);
+  for (const investor of state.investors) {
+    const evidence = await accountData(investor.credential.address);
+    expect(decodeKey(evidence, 101 + evidence.readUInt32LE(97))).toBe(
+      state.fund.issuer,
+    );
+  }
+  await expect(page.getByText("Aster Identity", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText("Aster Verification Desk", { exact: true }),
+  ).toBeVisible();
+  expect(
+    state.investors.map((investor: { name: string }) => investor.name),
+  ).toEqual(["Alice Adler", "Bob Brooks"]);
+
+  expect((await accountData(state.investors[0].token))[108]).toBe(1);
+  expect((await accountData(state.investors[1].token))[108]).toBe(2);
   await page.screenshot({
     path: "test-results/uc1-denial.png",
     fullPage: true,

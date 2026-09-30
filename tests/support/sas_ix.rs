@@ -193,7 +193,8 @@ pub fn close_attestation(
 #[allow(clippy::too_many_arguments)]
 pub fn tokenized_attestation(
     payer: &Pubkey,
-    authority: &Pubkey,
+    credential_authority: &Pubkey,
+    issuer: &Pubkey,
     credential: &Pubkey,
     schema: &Pubkey,
     attestation: &Pubkey,
@@ -220,7 +221,7 @@ pub fn tokenized_attestation(
         &schema_data,
         vec![
             AccountMeta::new(*payer, true),
-            AccountMeta::new_readonly(*authority, true),
+            AccountMeta::new_readonly(*credential_authority, true),
             AccountMeta::new_readonly(*credential, false),
             AccountMeta::new_readonly(*schema, false),
             AccountMeta::new(schema_mint, false),
@@ -231,7 +232,7 @@ pub fn tokenized_attestation(
     );
     let mut issue = create_attestation(
         payer,
-        authority,
+        issuer,
         credential,
         schema,
         attestation,
@@ -241,7 +242,7 @@ pub fn tokenized_attestation(
     );
     issue.data[0] = 10;
     for value in [
-        b"UC1 credential".as_slice(),
+        b"Aster jurisdiction".as_slice(),
         b"https://example.invalid/uc1",
         b"UC1",
     ] {

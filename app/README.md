@@ -2,12 +2,22 @@
 
 The website demonstrates admission to one private fund on a local, offline
 surfnet. The fund accepts DE and FR evidence from one approved SAS issuer.
-Alice has a DE jurisdiction; Bob has a US jurisdiction. Both begin with frozen
+Alice Adler has a DE jurisdiction; Bob Brooks has a US jurisdiction. Both begin with frozen
 fund accounts and no credentials.
 
 The presenter switches between issuer and investor views. Issuance and activation
 submit real transactions. The page reads credential and token-account state from
 the chain. The server pays fees as a relayer, so no wallet extension is required.
+
+The fictional provider Aster Identity holds the SAS credential authority key.
+It creates the `Aster Identity` credential and `investor-jurisdiction` schema,
+and authorizes a separate Aster Verification Desk key to issue attestations.
+The fund operator and fee payer use a third key. The issuer cannot create schemas,
+and the credential authority is not in the authorized issuer list.
+This follows the [SAS data flow](https://solana.com/docs/tools/attestations/overview#data-flow).
+
+The authority key is used only during seeding and is not saved in the web session.
+Existing sessions must be reseeded after this role separation change.
 
 ## Run locally
 
