@@ -5,3 +5,7 @@ out/
 *.tsbuildinfo
 next-env.d.ts
 .surfpool/
+
+.demo/
+test-results/
+playwright-report/

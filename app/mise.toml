@@ -16,15 +16,15 @@ node = "24.21.0"
 # tools themselves.)
 
 [tasks.deps]
-description = "Install web dependencies (pinned Node)"
-run = "npm install"
+description = "Install locked web dependencies (pinned Node)"
+run = "npm ci"
 
 [tasks.surfnet]
-description = "Start a headless surfnet forking mainnet"
+description = "Start an offline local surfnet"
 run = "npm run surfnet"
 
 [tasks.seed]
-description = "Preflight the surfnet (connectivity + required programs)"
+description = "Deploy pinned programs and create a fresh UC1 demo session"
 run = "npm run seed"
 
 [tasks.dev]
@@ -34,3 +34,11 @@ run = "npm run dev"
 [tasks.build]
 description = "Build the Next app (pinned Node)"
 run = "npm run build"
+
+[tasks.typecheck]
+description = "Check the demo TypeScript"
+run = "npm run typecheck"
+
+[tasks.e2e]
+description = "Build the website and test UC1 in a browser against an isolated surfnet"
+run = "npm run test:e2e"
