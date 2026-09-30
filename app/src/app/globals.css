@@ -1,0 +1,215 @@
+/*
+ * Design tokens for the demo, taken from the screen mockups.
+ *
+ * `--muted` is #5B626D rather than the mockups' first-draft #727A85: that value
+ * measured 3.95:1 on --paper and 4.34:1 on --panel, under the 4.5:1 WCAG AA
+ * floor for the 11-13px captions it is used for. #5B626D gives 5.6:1 / 6.2:1.
+ */
+:root {
+  --ink: #181a1f;
+  --ink2: #41474f;
+  --muted: #5b626d;
+  --line: #e6e3db;
+  --paper: #f6f4ee;
+  --panel: #ffffff;
+  --accent: #2b4c7e;
+  --accent2: #1e355c;
+  --gold: #9a7b2e;
+  --ok: #1e7a49;
+  --okbg: #e7f1eb;
+  --warn: #9c6b12;
+  --warnbg: #f5ebd7;
+  --bad: #a83535;
+  --badbg: #f4e3e2;
+  --ice: #38657f;
+  --icebg: #e6eef2;
+  --violet: #6e5aa6;
+  --sans: "IBM Plex Sans", system-ui, -apple-system, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace;
+  --serif: "Spectral", Georgia, "Times New Roman", serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+a:hover {
+  color: var(--accent2);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.mono {
+  font-family: var(--mono);
+}
+
+.serif {
+  font-family: var(--serif);
+}
+
+.lbl {
+  font-size: 10.5px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  border: 1px solid var(--line);
+  white-space: nowrap;
+}
+
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  display: inline-block;
+  flex: none;
+}
+
+/* Touch targets stay >=44px tall via padding + line-height on real controls. */
+.btn {
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.5;
+  border-radius: 9px;
+  padding: 11px 17px;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  text-decoration: none;
+}
+
+.btn:hover:not(:disabled) {
+  background: var(--accent2);
+  border-color: var(--accent2);
+  color: #fff;
+}
+
+.btn.ghost {
+  background: transparent;
+  color: var(--accent);
+}
+
+.btn.ghost:hover:not(:disabled) {
+  background: #eef2f8;
+  color: var(--accent2);
+}
+
+.btn.violet {
+  background: var(--violet);
+  border-color: var(--violet);
+}
+
+.btn.violet:hover:not(:disabled) {
+  background: #5a4990;
+  border-color: #5a4990;
+}
+
+.btn.warn {
+  background: transparent;
+  border-color: #d9b1af;
+  color: var(--bad);
+}
+
+.btn.warn:hover:not(:disabled) {
+  background: var(--badbg);
+  color: #7c2222;
+}
+
+.btn:disabled {
+  background: #c9cdd3;
+  border-color: #c9cdd3;
+  color: #fff;
+  cursor: not-allowed;
+}
+
+.fld {
+  width: 100%;
+  font-family: inherit;
+  font-size: 13.5px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #fcfbf8;
+  color: var(--ink);
+}
+
+.fld[readonly] {
+  color: var(--ink2);
+}
+
+.flab {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink2);
+  margin-bottom: 6px;
+  display: block;
+}
+
+.kv {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  font-size: 13.5px;
+  padding: 7px 0;
+}
+
+.kv + .kv {
+  border-top: 1px solid var(--line);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

@@ -1,5 +1,14 @@
 // A fresh local UC1 session. Only funding and program deployment use cheatcodes.
 // Fund, policy, status records and token accounts are created by real instructions.
+//
+// Four separate parties, following the SAS model:
+//   - the credential authority owns the SAS credential, creates its schema and
+//     registers issuers as the credential's authorized signers;
+//   - the issuer (Acme KYC) is one of those signers and creates attestations;
+//   - the fund operator (the payer here) owns the mint and its Token ACL config;
+//   - the investors hold the token accounts being admitted.
+// The authority key is used once, here, and never written to the session file:
+// nothing at runtime needs it.
 import { randomBytes, createHash } from "node:crypto";
 import { mkdir, readFile, writeFile, rename } from "node:fs/promises";
 import { existsSync } from "node:fs";
@@ -28,6 +37,10 @@ import {
 } from "../src/lib/server/chain";
 import { manifestPath, type Manifest } from "../src/lib/server/demo";
 if (existsSync(".env.local")) process.loadEnvFile(".env.local");
+/** SAS credential name; the credential PDA is `credential, authority, name`. */
+const CREDENTIAL_NAME = "kyc-registry";
+/** The fund's freshness limit on `verified_at`: 365 days. */
+const MAX_AGE = 365 * 86_400;
 async function main() {
   await rpc("getHealth");
   const source = await readFile("../tests/support/ids.rs", "utf8");
@@ -49,38 +62,37 @@ async function main() {
     await rpc("surfnet_writeProgram", [id, binary.toString("hex"), 0]);
   }
   const payerSeed = randomBytes(32).toString("hex");
-  const authority = await signer(randomBytes(32).toString("hex"));
   const issuerSeed = randomBytes(32).toString("hex");
   const payer = await signer(payerSeed);
   const issuer = await signer(issuerSeed);
+  const authority = await signer(randomBytes(32).toString("hex"));
   const mint = await signer(randomBytes(32).toString("hex"));
   await rpc("surfnet_setAccount", [payer.address, { lamports: 10000000000 }]);
   const credential = await pda(
     SAS,
     "credential",
     key(authority.address),
-    "Aster Identity",
+    CREDENTIAL_NAME,
   );
   const schema = await pda(
     SAS,
     "schema",
     key(credential),
-    "investor-jurisdiction",
+    "eligibility",
     Buffer.from([1]),
   );
   await send(payer, [
-    ix(SAS, bytes([0], str("Aster Identity"), num(1, 4), key(issuer.address)), [
-      signed(payer, true),
-      rw(credential),
-      signed(authority),
-      ro(SYSTEM),
-    ]),
+    ix(
+      SAS,
+      bytes([0], str(CREDENTIAL_NAME), num(1, 4), key(issuer.address)),
+      [signed(payer, true), rw(credential), signed(authority), ro(SYSTEM)],
+    ),
     ix(
       SAS,
       bytes(
         [1],
-        str("investor-jurisdiction"),
-        str("Aster verified investor jurisdiction"),
+        str("eligibility"),
+        str("UC1 demo fixture"),
         str(Buffer.from([12, 8])),
         num(2, 4),
         str("jurisdiction"),
@@ -120,7 +132,7 @@ async function main() {
   key(credential).copy(policy, 1);
   key(schema).copy(policy, 33);
   policy[65] = 1;
-  num(86400).copy(policy, 66);
+  num(MAX_AGE).copy(policy, 66);
   policy[74] = 2;
   Buffer.from("DEFR").copy(policy, 75);
   await send(payer, [
@@ -137,8 +149,8 @@ async function main() {
   ]);
   const investors = {} as Manifest["investors"];
   for (const [id, name, jurisdiction] of [
-    ["alice", "Alice Adler", "DE"],
-    ["bob", "Bob Brooks", "US"],
+    ["lena", "Lena R.", "DE"],
+    ["mark", "Mark T.", "US"],
   ] as const) {
     const wallet = await signer(randomBytes(32).toString("hex"));
     const token = await signer(randomBytes(32).toString("hex"));
@@ -189,8 +201,9 @@ async function main() {
     rpc: endpoint(),
     payerSeed,
     issuerSeed,
-    credentialAuthority: authority.address,
-    mint: mint.address,
+    fund: { name: "Meridian EU Retail", symbol: "MERID", mint: mint.address },
+    authority: { name: "KYC Trust Registry", address: authority.address },
+    issuer: { name: "Acme KYC", address: issuer.address },
     credential,
     schema,
     investors,
@@ -201,7 +214,9 @@ async function main() {
   });
   await rename(manifestPath() + ".tmp", manifestPath());
   console.log(
-    "UC1 ready: one DE/FR fund, Alice Adler (DE), Bob Brooks (US), both frozen and without credentials.",
+    "UC1 ready: Meridian EU Retail (DE/FR), Lena R. (DE) and Mark T. (US), both " +
+      "frozen and without credentials. Acme KYC is an authorized signer of the " +
+      "KYC Trust Registry credential.",
   );
 }
 main().catch((e) => {

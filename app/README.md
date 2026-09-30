@@ -1,23 +1,29 @@
 # UC1 admission demo
 
-The website demonstrates admission to one private fund on a local, offline
-surfnet. The fund accepts DE and FR evidence from one approved SAS issuer.
-Alice Adler has a DE jurisdiction; Bob Brooks has a US jurisdiction. Both begin with frozen
-fund accounts and no credentials.
+The website demonstrates admission to one private fund, **Meridian EU Retail**
+(MERID), on a local, offline surfnet. It runs the real gate, Solana Attestation
+Service (SAS) and Token ACL programs. Every fact on the screens is read from chain
+state, and every decision is the gate's own.
 
-The presenter switches between issuer and investor views. Issuance and activation
-submit real transactions. The page reads credential and token-account state from
-the chain. The server pays fees as a relayer, so no wallet extension is required.
+The fund accepts investors from Germany or France whose KYC was completed within
+the last 365 days. Lena R. has a DE jurisdiction; Mark T. has a US jurisdiction.
+Both begin with frozen fund accounts and no credentials.
 
-The fictional provider Aster Identity holds the SAS credential authority key.
-It creates the `Aster Identity` credential and `investor-jurisdiction` schema,
-and authorizes a separate Aster Verification Desk key to issue attestations.
-The fund operator and fee payer use a third key. The issuer cannot create schemas,
-and the credential authority is not in the authorized issuer list.
-This follows the [SAS data flow](https://solana.com/docs/tools/attestations/overview#data-flow).
+## Parties
 
-The authority key is used only during seeding and is not saved in the web session.
-Existing sessions must be reseeded after this role separation change.
+The demo keeps four roles on separate keys, following the SAS model:
+
+| Role | Who | Signs |
+| --- | --- | --- |
+| Credential authority | KYC Trust Registry | Creates the SAS credential and schema, and registers issuers as the credential's authorized signers |
+| Issuer | Acme KYC | Creates attestations, as an authorized signer of the credential |
+| Fund operator | The seed's payer | Owns the mint and the Token ACL config; configures the gate policy; mints MERID |
+| Investors | Lena R., Mark T. | Hold the token accounts being admitted |
+
+The fund's policy accepts the registry's **credential**. It therefore accepts a
+record from any issuer the registry authorizes; the gate does not check which
+issuer signed. The authority's key signs once, during seeding, and is not stored.
+The server keeps the operator and issuer keys so it can relay their actions.
 
 ## Run locally
 
@@ -52,32 +58,68 @@ Open <http://127.0.0.1:3000>.
 The seed command deploys the built gate and the committed SAS and Token ACL
 binaries. It checks dependency hashes against `tests/support/ids.rs` before
 loading them. Only deployment and fee funding use surfnet cheatcodes. All fund,
-policy, schema, status-record, and investor-account setup uses real instructions.
+policy, credential, schema, status-record, and investor-account setup uses real
+instructions.
 
 The demo uses `http://127.0.0.1:8899` by default. To use another local port, set
 `DEMO_RPC_URL` in `app/.env.local` and start surfnet on that port. Both seeding and
 the server read this variable. Remote networks are outside this demo's scope.
 
+## Screens
+
+| Route | Screen | Role |
+| --- | --- | --- |
+| `/` | Overview | — |
+| `/operator` | 1 · Fund setup, and MERID allocation | Fund operator |
+| `/authority` | Credential, schema and authorized issuers | Credential authority |
+| `/issuer` | 3 · Issue a credential | Issuer |
+| `/investor/lena` | 2 · Account frozen → 4 · Access granted | Investor |
+| `/investor/mark` | 6 · Access denied | Investor |
+| `/status` | Surfnet, programs and session | — |
+
+The numbered screens follow the UC1 mockups. The credential authority screen is
+not in the mockups; it shows the role split above. Screens 5, 7, 8 and 9 of the
+mockups (withdrawal, compliance actions, the access timeline and the second fund)
+belong to later use cases and are not in this build.
+
+The investor screen's check list shows the gate's checks in the order `can_thaw`
+runs them. The gate returns a single error code and stops at the first failure,
+so one code is enough to show which checks passed, which failed and which never
+ran (`src/lib/gate.ts`). A refusal while authenticating the inputs, such as having
+no credential at all, is shown separately from a policy denial: in that case none
+of the fund's rules were checked.
+
 ## Present UC1
 
-1. In **Investor view**, select Alice and click **Activate account**. Missing
-   evidence denies admission, and the account stays frozen.
-2. Switch to **Issuer view** and click **Issue credential**. Wait for confirmation.
-3. Return to **Investor view** and click **Activate account**. The account becomes
-   active after the transaction confirms and the page reloads chain state.
-4. Select Bob, issue his US credential, and request activation. The fund rejects
-   his jurisdiction, and his account remains frozen.
+1. **`/operator`**: all four setup steps read from chain, and the fund's policy.
+   Click **Allocate 25,000** for Lena. Token-2022 refuses: a frozen account cannot
+   receive tokens.
+2. **`/investor/lena`**: click **Request access**. The gate finds no genuine
+   credential for the wallet (`Owner · 2`), and the account stays frozen.
+3. **`/issuer`**: issue Lena a credential (KYC completed today, valid 12 months).
+4. **`/investor/lena`**: request access again. Every check passes and the account
+   becomes active. Allocate on `/operator` now succeeds.
+5. **`/issuer`** then **`/investor/mark`**: issue Mark's US credential and request
+   access. The credential is genuine and current, but the gate refuses it on
+   region (`Claim · 13`).
 
-The expandable chain details contain the confirmed transaction signature or the
-rejection logs. Missing-evidence and jurisdiction failures are rejected during
-transaction preflight, so those requests have no confirmed signature.
+Other outcomes, all from the issuer screen after reseeding:
 
-To repeat the presentation, rerun `mise run seed` and refresh the page. This creates
-a fresh fund and new demo identities on the same local surfnet. Earlier accounts
-remain on that surfnet but are no longer selected by the website.
+| To show | Issue with | Gate code |
+| --- | --- | --- |
+| Stale KYC | **KYC completed** 2 years ago | `Freshness · 10` |
+| Expired credential | **Valid until** 2 minutes, then request access after it lapses | `Expired · 9` |
+
+SAS refuses an attestation whose expiry has already passed, so an expired
+credential has to lapse on the network's clock. That clock is roughly wall time.
+
+There is one credential per investor. Renewal (close and reissue) belongs to the
+lifecycle use case, so to repeat the presentation, rerun `mise run seed` and
+refresh the page. This creates a fresh fund and new demo identities on the same
+local surfnet. Earlier accounts remain on that surfnet but are no longer selected.
 
 Demo signing keys stay in the server's ignored `.demo/session.json`, written with
-owner-only permissions. Role selection is a presentation control, not production
+owner-only permissions. Role screens are a presentation device, not production
 user authentication. The website binds to localhost and accepts actions only from
 the same local origin.
 
@@ -87,33 +129,44 @@ Run these commands from `app/` after building the gate:
 
 ```sh
 mise run typecheck
-mise exec -- npx playwright install chromium
+mise exec -- npx playwright install --with-deps chromium
 mise run e2e
 ```
 
+`--with-deps` also installs the system libraries Chromium needs on Linux
+(`libnss3`, `libnspr4`, `libasound2`), which requires `sudo`. Without them the
+browser fails to start.
+
 The browser test builds and runs the production website, starts an isolated
-surfnet on port 18999, and serves the test website on port 3300. It seeds a separate
-session under `.demo/e2e`, exercises the presentation, and checks the raw on-chain
-token states for both investors. It also checks that the API exposes no signing
-keys and rejects unsupported actions and foreign origins. Test services stop when
-the suite ends. The regular demo session is preserved.
+surfnet on port 18999, and serves the test website on port 3300. It seeds a
+separate session under `.demo/e2e` and walks the presentation above across the
+operator, authority, issuer and investor screens. It checks the raw on-chain
+token states for both investors, that no screen scrolls horizontally at phone
+width, that the API exposes no signing keys, and that it rejects unsupported
+actions and foreign origins. Test services stop when the suite ends. The regular
+demo session is preserved.
 
 Run `mise run check` and `mise run verify` from the repository root for the Rust
 checks, SBF build, and surfnet integration suite.
 
 ## Scope
 
-This change exposes credential issuance and admission only. It adds no renewal,
-revocation, freeze controls, block management, policy editing, second fund, or
-wallet integration. Freshness and expiry are enforced by the existing gate, with
-24-hour fixture values. Active accounts are not automatically frozen when their
+This change exposes the UC1 screens: fund setup, the credential authority,
+issuance, admission and allocation. It adds no renewal, revocation, freeze
+controls, block management, policy editing, issuer management, second fund, or
+wallet integration. Active accounts are not automatically frozen when their
 credentials later expire.
 
 ## Code
 
 - `scripts/seed.ts` creates a session through the pinned on-chain programs.
 - `src/lib/server/chain.ts` contains wire encodings, PDA derivation, and RPC submission.
-- `src/lib/server/demo.ts` reads the session and exposes chain-derived view data.
-- `src/app/api/demo/route.ts` permits only issuance and admission for the two investors.
-- `src/app/page.tsx` implements the presenter views.
+- `src/lib/server/accounts.ts` decodes the mint, Token ACL config, token accounts,
+  SAS credential, schema and attestation, and the gate policy.
+- `src/lib/server/demo.ts` reads the session, builds the chain-derived snapshot and
+  runs the demo actions.
+- `src/app/api/demo/route.ts` permits only issuance, admission and allocation for
+  the two investors; `src/app/api/status/route.ts` reports network status.
+- `src/lib/gate.ts` maps a gate error code onto its ordered checks.
+- `src/lib/client.tsx` holds the snapshot for the screens; `src/app/*` are the screens.
 - `tests/admission.spec.ts` verifies the live browser walkthrough.

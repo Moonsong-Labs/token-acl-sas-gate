@@ -1,5 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { act, snapshot } from "@/lib/server/demo";
+import {
+  act,
+  snapshot,
+  INVESTORS,
+  VERIFIED,
+  VALIDITY,
+  type InvestorId,
+  type IssueOptions,
+} from "@/lib/server/demo";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 function local(request: NextRequest) {
@@ -10,6 +18,9 @@ function local(request: NextRequest) {
   if (request.method === "POST" && origin !== `http://${host}`)
     throw new Error("Use the local demo page to submit actions.");
 }
+const ACTIONS = ["issue", "activate", "allocate"] as const;
+const isOneOf = <T extends string>(values: readonly T[], value: unknown): value is T =>
+  typeof value === "string" && (values as readonly string[]).includes(value);
 export async function GET(request: NextRequest) {
   try {
     local(request);
@@ -26,16 +37,22 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     local(request);
-    const { action, investor } = await request.json();
+    const { action, investor, options } = await request.json();
+    const verified = options?.verified ?? "today";
+    const validity = options?.validity ?? "year";
     if (
-      !["issue", "activate"].includes(action) ||
-      !["alice", "bob"].includes(investor)
+      !isOneOf(ACTIONS, action) ||
+      !isOneOf(INVESTORS, investor) ||
+      !isOneOf(Object.keys(VERIFIED) as IssueOptions["verified"][], verified) ||
+      !isOneOf(Object.keys(VALIDITY) as IssueOptions["validity"][], validity)
     )
       return NextResponse.json(
-        { error: "Unknown demo action or investor." },
+        { error: "Unknown demo action, investor or option." },
         { status: 400 },
       );
-    return NextResponse.json(await act(action, investor));
+    return NextResponse.json(
+      await act(action, investor as InvestorId, { verified, validity }),
+    );
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "Action failed" },

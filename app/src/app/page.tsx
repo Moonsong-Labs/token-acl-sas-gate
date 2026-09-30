@@ -1,284 +1,234 @@
 "use client";
-import { useEffect, useState } from "react";
-import type { DemoSnapshot, ActionResult, InvestorId } from "@/lib/server/demo";
-import "./demo.css";
-const short = (s: string) => `${s.slice(0, 6)}…${s.slice(-6)}`;
-const date = (n: number) => new Date(n * 1000).toLocaleString();
-export default function Home() {
-  const [state, setState] = useState<DemoSnapshot | null>(null);
-  const [role, setRole] = useState<"investor" | "issuer">("investor");
-  const [id, setId] = useState<InvestorId>("alice");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const [result, setResult] = useState<ActionResult | null>(null);
-  async function refresh() {
-    setBusy(true);
-    setError("");
-    try {
-      const response = await fetch("/api/demo", { cache: "no-store" });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error);
-      setState(data);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Unable to load demo");
-      setState(null);
-    } finally {
-      setBusy(false);
-    }
-  }
-  useEffect(() => {
-    void refresh();
-  }, []);
-  async function act(action: "issue" | "activate") {
-    setBusy(true);
-    setError("");
-    setResult(null);
-    try {
-      const response = await fetch("/api/demo", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action, investor: id }),
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error);
-      setResult(data);
-      setState(data.state);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Action failed");
-    } finally {
-      setBusy(false);
-    }
-  }
-  const investor = state?.investors.find((i) => i.id === id);
+
+import Link from "next/link";
+import type { ReactNode } from "react";
+import { Screen } from "@/components/Chrome";
+import { useDemo } from "@/lib/client";
+
+function Persona({
+  tag,
+  tagBackground,
+  tagColor,
+  blurb,
+  children,
+}: {
+  tag: string;
+  tagBackground: string;
+  tagColor: string;
+  blurb: ReactNode;
+  children: ReactNode;
+}) {
   return (
-    <main className="demo">
-      <header>
-        <div>
-          <p className="eyebrow">DOORS OF DURIN / UC1</p>
-          <h1>Credential-based admission</h1>
-          <p className="intro">
-            One fund. Reusable evidence. Admission decided on-chain.
+    <div
+      className="card"
+      style={{ padding: "16px 17px", display: "flex", flexDirection: "column", gap: 11 }}
+    >
+      <h2
+        style={{
+          fontSize: 11,
+          fontWeight: 700,
+          padding: "2px 9px",
+          borderRadius: 6,
+          alignSelf: "flex-start",
+          background: tagBackground,
+          color: tagColor,
+        }}
+      >
+        {tag}
+      </h2>
+      <p style={{ fontSize: 12.5, color: "var(--muted)", lineHeight: 1.45 }}>{blurb}</p>
+      {children}
+    </div>
+  );
+}
+
+function Nav({ n, href, children }: { n: ReactNode; href: string; children: ReactNode }) {
+  return (
+    <Link
+      href={href}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        padding: "10px 11px",
+        border: "1px solid var(--line)",
+        borderRadius: 9,
+        background: "#FCFBF8",
+        fontSize: 13,
+        fontWeight: 500,
+        color: "var(--ink)",
+      }}
+    >
+      <span
+        aria-hidden="true"
+        style={{
+          flex: "none",
+          width: 22,
+          height: 22,
+          borderRadius: 6,
+          background: "#EEF2F8",
+          color: "var(--accent2)",
+          fontSize: 12,
+          fontWeight: 600,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        {n}
+      </span>
+      {children}
+    </Link>
+  );
+}
+
+export default function Overview() {
+  const { state } = useDemo();
+  const fund = state?.fund.name ?? "the fund";
+  const registry = state?.registry.name ?? "the credential authority";
+  const issuer = state?.issuer.name ?? "the issuer";
+  const [lena, mark] = state?.investors ?? [];
+
+  return (
+    <Screen showBack={false}>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+          gap: 24,
+          alignItems: "start",
+        }}
+      >
+        <section style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <div>
+            <div className="lbl">Live demo · use case 1</div>
+            <h1
+              className="serif"
+              style={{ fontSize: 33, fontWeight: 700, lineHeight: 1.1, letterSpacing: "-.01em" }}
+            >
+              Access to a regulated token, decided by credentials
+            </h1>
+          </div>
+          <p style={{ fontSize: 14.5, color: "var(--ink2)", lineHeight: 1.55 }}>
+            Instead of an eligible-investor spreadsheet, the fund accepts a reusable KYC
+            credential the investor already holds. When access is requested, the gate program
+            reads that credential on-chain and admits the account only if it meets the
+            fund&rsquo;s policy. Every refusal names the check that failed.
           </p>
-        </div>
-        <span className="environment">Local surfnet · demo identities</span>
-      </header>
-      {error && (
-        <div role="alert" className="notice error">
-          {error}
-        </div>
-      )}
-      {!state ? (
-        <section className="card">
-          <h2>{busy ? "Connecting to the demo…" : "Demo unavailable"}</h2>
-          <p>
-            Start the local surfnet and run <code>mise run seed</code> from{" "}
-            <code>app/</code>.
-          </p>
-          <button onClick={refresh} disabled={busy}>
-            Retry connection
-          </button>
-        </section>
-      ) : (
-        <>
-          <section className="card fund">
-            <div>
-              <p className="eyebrow">FUND ADMISSION POLICY</p>
-              <h2>{state.fund.name}</h2>
-              <p>
-                The fund accepts a current credential from its approved issuer.
-              </p>
-            </div>
-            <dl>
-              <div>
-                <dt>Accepted jurisdictions</dt>
-                <dd>{state.fund.jurisdictions.join(" / ")}</dd>
-              </div>
-              <div>
-                <dt>Verification age</dt>
-                <dd>Less than {state.fund.maxAge / 3600} hours</dd>
-              </div>
-              <div>
-                <dt>Credential authority</dt>
-                <dd title={state.fund.authority}>{state.fund.authorityName}</dd>
-                <dt>Authorized issuer</dt>
-                <dd title={state.fund.issuer}>{state.fund.issuerName}</dd>
-              </div>
-            </dl>
-          </section>
-          <div className="workspace">
-            <aside className="card">
-              <p className="eyebrow">PRESENTER CONTROLS</p>
-              <h2>Demo role</h2>
-              <div className="roles" aria-label="Demo role">
-                <button
-                  aria-pressed={role === "investor"}
-                  onClick={() => setRole("investor")}
-                  disabled={busy}
-                >
-                  Investor view
-                </button>
-                <button
-                  aria-pressed={role === "issuer"}
-                  onClick={() => setRole("issuer")}
-                  disabled={busy}
-                >
-                  Issuer view
-                </button>
-              </div>
-              <label htmlFor="investor">Investor</label>
-              <select
-                id="investor"
-                value={id}
-                disabled={busy}
-                onChange={(e) => {
-                  setId(e.target.value as InvestorId);
-                  setResult(null);
-                  setError("");
+
+          <div
+            className="card"
+            style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: 10 }}
+          >
+            <h2 className="lbl">What this build covers</h2>
+            {[
+              "A locked account, and an access request refused with a named reason",
+              "An issuer writing a credential bound to the investor's own wallet",
+              "Admission the moment the credential meets the fund's policy — and only admitted accounts can receive the fund's token",
+            ].map((line, index) => (
+              <div
+                key={line}
+                style={{
+                  display: "flex",
+                  gap: 9,
+                  alignItems: "flex-start",
+                  fontSize: 13.5,
+                  color: "var(--ink2)",
+                  lineHeight: 1.45,
                 }}
               >
-                {state.investors.map((i) => (
-                  <option key={i.id} value={i.id}>
-                    {i.name} · {i.jurisdiction}
-                  </option>
-                ))}
-              </select>
-              <p className="hint">
-                Alice Adler has a DE jurisdiction. Bob Brooks has a US
-                jurisdiction. Both start without credentials.
-              </p>
-              <button className="secondary" onClick={refresh} disabled={busy}>
-                Refresh chain state
-              </button>
-            </aside>
-            {investor && (
-              <section className="card account">
-                <div className="section-top">
-                  <div>
-                    <p className="eyebrow">
-                      {role === "issuer"
-                        ? "ISSUER WORKSPACE"
-                        : "INVESTOR ACCOUNT"}
-                    </p>
-                    <h2>{investor.name}</h2>
-                  </div>
-                  <span
-                    data-testid="account-state"
-                    className={`badge ${investor.active ? "active" : ""}`}
-                  >
-                    {investor.active ? "Active" : "Frozen"}
-                  </span>
-                </div>
-                <p>
-                  {investor.active
-                    ? "This account has been admitted to the fund."
-                    : "This fund account is frozen until admission succeeds."}
-                </p>
-                <div className="credential">
-                  <h3>SAS credential</h3>
-                  {investor.credential ? (
-                    <dl>
-                      <div>
-                        <dt>Jurisdiction</dt>
-                        <dd>{investor.credential.jurisdiction}</dd>
-                      </div>
-                      <div>
-                        <dt>Verified</dt>
-                        <dd>{date(investor.credential.verifiedAt)}</dd>
-                      </div>
-                      <div>
-                        <dt>Expires</dt>
-                        <dd>{date(investor.credential.expiry)}</dd>
-                      </div>
-                    </dl>
-                  ) : (
-                    <p>No credential issued.</p>
-                  )}
-                </div>
-                {role === "issuer" ? (
-                  <>
-                    <p>
-                      Issue {investor.name}&apos;s verified jurisdiction,{" "}
-                      <strong>{investor.jurisdiction}</strong>, using the demo
-                      issuer. The fund evaluates whether that jurisdiction
-                      qualifies.
-                    </p>
-                    <button
-                      onClick={() => act("issue")}
-                      disabled={busy || !!investor.credential}
-                    >
-                      {busy
-                        ? "Submitting…"
-                        : investor.credential
-                          ? "Credential already issued"
-                          : "Issue credential"}
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <p>
-                      Request admission using the credential bound to this
-                      investor&apos;s wallet.
-                    </p>
-                    <button
-                      onClick={() => act("activate")}
-                      disabled={busy || investor.active}
-                    >
-                      {busy
-                        ? "Checking admission…"
-                        : investor.active
-                          ? "Account is active"
-                          : "Activate account"}
-                    </button>
-                  </>
-                )}
-                {result && (
-                  <div
-                    role="status"
-                    className={`notice ${result.ok ? "success" : "denied"}`}
-                  >
-                    <strong>{result.message}</strong>
-                    <p>
-                      {result.ok
-                        ? "Transaction confirmed by local surfnet."
-                        : "The request was not admitted. No activation was confirmed."}
-                    </p>
-                    <details>
-                      <summary>Chain details</summary>
-                      {result.signature && (
-                        <p>
-                          Transaction: <code>{result.signature}</code>
-                        </p>
-                      )}
-                      {result.logs && <pre>{result.logs.join("\n")}</pre>}
-                    </details>
-                  </div>
-                )}
-                <details className="addresses">
-                  <summary>Account addresses</summary>
-                  <dl>
-                    <div>
-                      <dt>Wallet</dt>
-                      <dd>{investor.wallet}</dd>
-                    </div>
-                    <div>
-                      <dt>Fund token account</dt>
-                      <dd>{investor.token}</dd>
-                    </div>
-                    <div>
-                      <dt>Fund mint</dt>
-                      <dd>{state.fund.mint}</dd>
-                    </div>
-                  </dl>
-                </details>
-              </section>
-            )}
+                <span style={{ color: "var(--ok)", fontWeight: 700 }}>{index + 1}</span>
+                <span>{line}</span>
+              </div>
+            ))}
+            <p
+              style={{
+                fontSize: 11.5,
+                color: "var(--muted)",
+                borderTop: "1px solid var(--line)",
+                paddingTop: 9,
+                lineHeight: 1.45,
+              }}
+            >
+              Withdrawal and restoration, the compliance hold and the second fund are the next
+              use cases; their screens are not in this build.
+            </p>
           </div>
-          <footer>
-            Eligibility is checked at activation. Later expiry or revocation
-            does not automatically freeze an active account.
-          </footer>
-        </>
-      )}
-    </main>
+
+          <p style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>
+            Runs against a local test network with the real gate, Solana Attestation Service
+            and Token ACL programs. No real funds and no mainnet transactions.
+          </p>
+        </section>
+
+        <section
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+            gap: 16,
+          }}
+        >
+          <Persona
+            tag="Fund operator"
+            tagBackground="#FBF6E9"
+            tagColor="#7A5F17"
+            blurb={`Sets up ${fund} and the policy for who may hold it.`}
+          >
+            <Nav n={1} href="/operator">
+              Fund setup
+            </Nav>
+          </Persona>
+
+          <Persona
+            tag="Credential authority"
+            tagBackground="var(--icebg)"
+            tagColor="#2B5468"
+            blurb={`${registry} owns the KYC credential and its schema, and decides which issuers may write under it.`}
+          >
+            <Nav n="·" href="/authority">
+              Credential &amp; issuers
+            </Nav>
+          </Persona>
+
+          <Persona
+            tag="Issuer"
+            tagBackground="#F1ECF7"
+            tagColor="#4E3E77"
+            blurb={`${issuer} confirms an investor's KYC and issues the credential, as an authorized issuer of ${registry}.`}
+          >
+            <Nav n={3} href="/issuer">
+              Issue credential
+            </Nav>
+          </Persona>
+
+          <Persona
+            tag="Investor"
+            tagBackground="#EEF2F8"
+            tagColor="var(--accent2)"
+            blurb="Requests access and holds the fund's token once admitted."
+          >
+            <div style={{ display: "grid", gap: 9 }}>
+              <Nav n={2} href="/investor/lena">
+                {lena ? `${lena.name} — account` : "First investor"}
+              </Nav>
+              <Nav n={6} href="/investor/mark">
+                {mark ? `${mark.name} — account` : "Second investor"}
+              </Nav>
+            </div>
+          </Persona>
+
+          <Persona
+            tag="Environment"
+            tagBackground="#EEEBE3"
+            tagColor="var(--ink2)"
+            blurb="Surfnet connectivity and the programs the demo runs."
+          >
+            <Nav n="·" href="/status">
+              Network status
+            </Nav>
+          </Persona>
+        </section>
+      </div>
+    </Screen>
   );
 }

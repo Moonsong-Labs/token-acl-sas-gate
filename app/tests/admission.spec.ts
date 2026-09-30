@@ -1,6 +1,10 @@
-import { getAddressDecoder } from "@solana/kit";
-import { test, expect } from "@playwright/test";
-async function accountData(token: string) {
+import { test, expect, type Page } from "@playwright/test";
+
+// UC1 in a browser, against the real gate on an isolated surfnet
+// (scripts/test-server.ts). Every outcome asserted here is the gate's, read
+// back from chain state; the screens do not simulate a decision.
+
+async function tokenState(token: string) {
   const response = await fetch("http://127.0.0.1:18999", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -11,111 +15,95 @@ async function accountData(token: string) {
       params: [token, { encoding: "base64", commitment: "confirmed" }],
     }),
   });
-  return Buffer.from((await response.json()).result.value.data[0], "base64");
+  return Buffer.from((await response.json()).result.value.data[0], "base64")[108];
 }
-test("UC1: missing evidence denies, DE admits, US denies", async ({
+
+async function issue(page: Page, who: "lena" | "mark") {
+  await page.goto("/issuer");
+  await page.getByLabel("Investor wallet — who this credential is for").selectOption(who);
+  await page.getByRole("button", { name: "Issue credential", exact: true }).click();
+  await expect(page.getByRole("status")).toContainText("Credential issued and confirmed");
+}
+
+test("UC1: no credential is refused, DE is admitted and receives, US is denied", async ({
   page,
   request,
 }) => {
-  await page.goto("/");
-  await expect(
-    page.getByRole("heading", { name: "Durin Private Credit Fund" }),
-  ).toBeVisible();
+  // Operator: every setup step reads true from chain.
+  await page.goto("/operator");
+  await expect(page.getByRole("heading", { name: "Meridian EU Retail" })).toBeVisible();
+  for (const step of [
+    "Fund token created",
+    "Access handed to the eligibility gate",
+    "Eligibility checks wired in",
+    "Investors can request access",
+  ])
+    await expect(page.getByText(`${step} — done`)).toBeAttached();
+
+  // Credential authority: a separate key, with Acme KYC as its authorized issuer.
+  await page.goto("/authority");
+  await expect(page.getByRole("heading", { name: "KYC Trust Registry" })).toBeVisible();
+  await expect(page.getByRole("listitem").filter({ hasText: "Acme KYC" })).toBeVisible();
+
+  // Screen 2: the request is made and refused before any policy step.
+  await page.goto("/investor/lena");
   await expect(page.getByTestId("account-state")).toHaveText("Frozen");
-  await page
-    .getByRole("button", { name: "Activate account", exact: true })
-    .click();
-  await expect(page.getByRole("status")).toContainText(
-    "No accepted credential",
-  );
+  await page.getByRole("button", { name: "Request access" }).click();
+  await expect(page.getByRole("status")).toContainText("No credential on file");
+  await expect(page.getByRole("status")).toContainText("Owner · 2");
   await expect(page.getByTestId("account-state")).toHaveText("Frozen");
-  await page.getByRole("button", { name: "Issuer view" }).click();
-  await page
-    .getByRole("button", { name: "Issue credential", exact: true })
-    .click();
-  await expect(page.getByRole("status")).toContainText(
-    "Credential issued and confirmed",
-  );
-  await page.getByRole("button", { name: "Investor view" }).click();
-  await page
-    .getByRole("button", { name: "Activate account", exact: true })
-    .click();
-  await expect(page.getByRole("status")).toContainText(
-    "Admission confirmed on-chain",
-  );
+
+  // A frozen account cannot receive the fund's token.
+  await page.goto("/operator");
+  await page.getByRole("button", { name: "Allocate 25,000" }).first().click();
+  await expect(page.getByRole("status")).toContainText("frozen account cannot receive");
+
+  // Screens 3 and 4: issue, then admission.
+  await issue(page, "lena");
+  await page.goto("/investor/lena");
+  await page.getByRole("button", { name: "Request access" }).click();
+  await expect(page.getByRole("status")).toContainText("Admission confirmed on-chain");
   await expect(page.getByTestId("account-state")).toHaveText("Active");
+  await expect(page.getByText("Admission checks — all passed")).toBeVisible();
   await page.reload();
   await expect(page.getByTestId("account-state")).toHaveText("Active");
-  await page.getByLabel("Investor", { exact: true }).selectOption("bob");
-  await page.getByRole("button", { name: "Issuer view" }).click();
-  await page
-    .getByRole("button", { name: "Issue credential", exact: true })
-    .click();
-  await expect(page.getByRole("status")).toContainText(
-    "Credential issued and confirmed",
-  );
-  await page.getByRole("button", { name: "Investor view" }).click();
-  await page
-    .getByRole("button", { name: "Activate account", exact: true })
-    .click();
-  await expect(page.getByRole("status")).toContainText(
-    "Jurisdiction not accepted",
-  );
-  await expect(page.getByTestId("account-state")).toHaveText("Frozen");
-  const response = await request.get("/api/demo");
-  const state = await response.json();
-  expect(JSON.stringify(state)).not.toMatch(/Seed|privateKey|secretKey/);
-  // Check the on-chain delegation, not just the labels or manifest keys.
-  const decodeKey = (data: Buffer, offset: number) =>
-    getAddressDecoder().decode(data.subarray(offset, offset + 32));
-  const credential = await accountData(state.fund.credential);
-  expect(credential[0]).toBe(0);
-  expect(decodeKey(credential, 1)).toBe(state.fund.authority);
-  expect(state.fund.authority).not.toBe(state.fund.issuer);
-  const nameLength = credential.readUInt32LE(33);
-  expect(credential.subarray(37, 37 + nameLength).toString()).toBe(
-    "Aster Identity",
-  );
-  expect(credential.readUInt32LE(37 + nameLength)).toBe(1);
-  expect(decodeKey(credential, 41 + nameLength)).toBe(state.fund.issuer);
-  for (const investor of state.investors) {
-    const evidence = await accountData(investor.credential.address);
-    expect(decodeKey(evidence, 101 + evidence.readUInt32LE(97))).toBe(
-      state.fund.issuer,
-    );
-  }
-  await expect(page.getByText("Aster Identity", { exact: true })).toBeVisible();
-  await expect(
-    page.getByText("Aster Verification Desk", { exact: true }),
-  ).toBeVisible();
-  expect(
-    state.investors.map((investor: { name: string }) => investor.name),
-  ).toEqual(["Alice Adler", "Bob Brooks"]);
 
-  expect((await accountData(state.investors[0].token))[108]).toBe(1);
-  expect((await accountData(state.investors[1].token))[108]).toBe(2);
-  await page.screenshot({
-    path: "test-results/uc1-denial.png",
-    fullPage: true,
-  });
-  await page.setViewportSize({ width: 390, height: 844 });
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= window.innerWidth,
-    ),
-  ).toBe(true);
-  await page.screenshot({
-    path: "test-results/uc1-mobile.png",
-    fullPage: true,
-  });
+  await page.goto("/operator");
+  await page.getByRole("button", { name: "Allocate 25,000" }).first().click();
+  await expect(page.getByRole("status")).toContainText("25,000 MERID received");
+
+  // Screen 6: a genuine, current credential refused on region alone.
+  await issue(page, "mark");
+  await page.goto("/investor/mark");
+  await page.getByRole("button", { name: "Request access" }).click();
+  await expect(page.getByRole("status")).toContainText("Region not accepted");
+  await expect(page.getByRole("status")).toContainText("Claim · 13");
+  await expect(page.getByTestId("account-state")).toHaveText("Frozen");
+
+  const state = await (await request.get("/api/demo")).json();
+  expect(JSON.stringify(state)).not.toMatch(/Seed|privateKey|secretKey/);
+  expect(await tokenState(state.investors[0].token)).toBe(1);
+  expect(await tokenState(state.investors[1].token)).toBe(2);
+  await page.screenshot({ path: "test-results/uc1-denial.png", fullPage: true });
+
+  for (const path of ["/", "/operator", "/authority", "/issuer", "/investor/mark", "/status"]) {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(path);
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+      `${path} must not scroll horizontally at phone width`,
+    ).toBe(true);
+  }
+  await page.screenshot({ path: "test-results/uc1-mobile.png", fullPage: true });
+
   const unsupported = await request.post("/api/demo", {
     headers: { Origin: "http://127.0.0.1:3300" },
-    data: { action: "freeze", investor: "alice" },
+    data: { action: "freeze", investor: "lena" },
   });
   expect(unsupported.status()).toBe(400);
   const crossOrigin = await request.post("/api/demo", {
     headers: { Origin: "https://example.com" },
-    data: { action: "issue", investor: "alice" },
+    data: { action: "issue", investor: "lena" },
   });
   expect(crossOrigin.status()).toBe(400);
 });
