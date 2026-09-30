@@ -4,6 +4,7 @@ import Link from "next/link";
 import { CheckList } from "@/components/CheckList";
 import { PageTitle, Screen } from "@/components/Chrome";
 import { ActionError, Unavailable } from "@/components/Notice";
+import { TransactionLink } from "@/components/TransactionLink";
 import { HEADLINES, steps, type Decision } from "@/lib/gate";
 import {
   formatDate,
@@ -208,6 +209,7 @@ export function InvestorScreen({ who }: { who: InvestorId }) {
             {decision?.outcome === "admitted" && (
               <p role="status" style={{ fontSize: 13, color: "var(--ok)" }}>
                 {result?.message}
+                <TransactionLink href={result?.transaction} />
               </p>
             )}
 

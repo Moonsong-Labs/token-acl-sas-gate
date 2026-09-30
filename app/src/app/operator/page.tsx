@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { PageTitle, Screen } from "@/components/Chrome";
 import { ActionError, Unavailable } from "@/components/Notice";
+import { TransactionLink } from "@/components/TransactionLink";
 import { formatDuration, regionList, short, useDemo } from "@/lib/client";
 
 function Mark({ ok }: { ok: boolean }) {
@@ -172,6 +173,7 @@ export default function OperatorScreen() {
                       }}
                     >
                       {shown.message}
+                      <TransactionLink href={shown.transaction} />
                     </p>
                   )}
                 </div>

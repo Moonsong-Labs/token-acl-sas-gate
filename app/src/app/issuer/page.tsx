@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useId, useState } from "react";
 import { PageTitle, Screen } from "@/components/Chrome";
 import { ActionError, Unavailable } from "@/components/Notice";
+import { TransactionLink } from "@/components/TransactionLink";
 import {
   formatDate,
   formatDuration,
@@ -180,6 +181,7 @@ export default function IssuerScreen() {
           {result && (
             <p role="status" style={{ fontSize: 13, color: result.ok ? "var(--ok)" : "var(--bad)" }}>
               {result.message}
+              <TransactionLink href={result.transaction} />
             </p>
           )}
         </section>

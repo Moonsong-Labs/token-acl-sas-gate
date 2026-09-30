@@ -55,13 +55,21 @@ mise run dev
 
 Open <http://127.0.0.1:3000>.
 
+The surfnet also serves **Surfpool Studio**, its local explorer, at
+<http://127.0.0.1:18488>. Every confirmed action (issuance, admission,
+allocation) links to its transaction there: **View transaction** opens Studio
+on that signature, with the instructions, compute units, account changes and
+logs. Refused requests have no link, because they fail in preflight and never
+reach the chain. If Studio runs elsewhere, set `DEMO_STUDIO_URL` in
+`app/.env.local`.
+
 The seed command deploys the built gate and the committed SAS and Token ACL
 binaries. It checks dependency hashes against `tests/support/ids.rs` before
 loading them. Only deployment and fee funding use surfnet cheatcodes. All fund,
 policy, credential, schema, status-record, and investor-account setup uses real
 instructions.
 
-The demo uses `http://127.0.0.1:8899` by default. To use another local port, set
+The demo uses `http://127.0.0.1:8899` for the RPC by default. To use another local port, set
 `DEMO_RPC_URL` in `app/.env.local` and start surfnet on that port. Both seeding and
 the server read this variable. Remote networks are outside this demo's scope.
 

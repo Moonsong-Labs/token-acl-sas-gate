@@ -71,6 +71,23 @@ export function endpoint() {
     throw new Error("The demo requires a local surfnet RPC.");
   return value;
 }
+/**
+ * Surfpool Studio, the surfnet's local explorer. It opens a transaction from
+ * `/?t=<signature>`. Local HTTP only, like the RPC endpoint.
+ */
+export function studio() {
+  const value = process.env.DEMO_STUDIO_URL ?? "http://127.0.0.1:18488";
+  const url = new URL(value);
+  if (
+    url.protocol !== "http:" ||
+    !["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)
+  )
+    throw new Error("The demo requires a local Surfpool Studio URL.");
+  return url.origin;
+}
+export function transactionLink(signature: string) {
+  return `${studio()}/?t=${encodeURIComponent(signature)}`;
+}
 export class RpcFailure extends Error {
   constructor(
     message: string,

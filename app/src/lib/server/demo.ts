@@ -9,6 +9,7 @@ import {
   activate,
   mintTo,
   ledgerNow,
+  transactionLink,
   RpcFailure,
   GATE,
   endpoint,
@@ -204,6 +205,8 @@ export type ActionResult = {
   message: string;
   decision?: Decision;
   signature?: string;
+  /** Surfpool Studio link to the confirmed transaction. Refusals have none. */
+  transaction?: string;
   logs?: string[];
   state: DemoSnapshot;
 };
@@ -286,6 +289,7 @@ export function act(
             : `${ALLOCATION.toLocaleString("en-GB")} ${m.fund.symbol} received.`,
       decision: action === "activate" ? { outcome: "admitted" } : undefined,
       signature,
+      transaction: transactionLink(signature),
       state,
     } satisfies ActionResult;
   });

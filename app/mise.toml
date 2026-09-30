@@ -20,7 +20,7 @@ description = "Install locked web dependencies (pinned Node)"
 run = "npm ci"
 
 [tasks.surfnet]
-description = "Start an offline local surfnet"
+description = "Start an offline local surfnet, with Surfpool Studio on :18488"
 run = "npm run surfnet"
 
 [tasks.seed]

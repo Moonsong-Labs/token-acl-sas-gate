@@ -18,11 +18,20 @@ async function tokenState(token: string) {
   return Buffer.from((await response.json()).result.value.data[0], "base64")[108];
 }
 
+/** A confirmed transaction links to Surfpool Studio; a refusal links nowhere. */
+async function expectTransactionLink(page: Page, linked: boolean) {
+  const link = page.getByRole("status").getByRole("link", { name: /View transaction/ });
+  if (!linked) return expect(link).toHaveCount(0);
+  await expect(link).toHaveAttribute("href", /^http:\/\/127\.0\.0\.1:19488\/\?t=[1-9A-HJ-NP-Za-km-z]{64,88}$/);
+  await expect(link).toHaveAttribute("target", "_blank");
+}
+
 async function issue(page: Page, who: "lena" | "mark") {
   await page.goto("/issuer");
   await page.getByLabel("Investor wallet — who this credential is for").selectOption(who);
   await page.getByRole("button", { name: "Issue credential", exact: true }).click();
   await expect(page.getByRole("status")).toContainText("Credential issued and confirmed");
+  await expectTransactionLink(page, true);
 }
 
 test("UC1: no credential is refused, DE is admitted and receives, US is denied", async ({
@@ -51,18 +60,21 @@ test("UC1: no credential is refused, DE is admitted and receives, US is denied",
   await page.getByRole("button", { name: "Request access" }).click();
   await expect(page.getByRole("status")).toContainText("No credential on file");
   await expect(page.getByRole("status")).toContainText("Owner · 2");
+  await expectTransactionLink(page, false);
   await expect(page.getByTestId("account-state")).toHaveText("Frozen");
 
   // A frozen account cannot receive the fund's token.
   await page.goto("/operator");
   await page.getByRole("button", { name: "Allocate 25,000" }).first().click();
   await expect(page.getByRole("status")).toContainText("frozen account cannot receive");
+  await expectTransactionLink(page, false);
 
   // Screens 3 and 4: issue, then admission.
   await issue(page, "lena");
   await page.goto("/investor/lena");
   await page.getByRole("button", { name: "Request access" }).click();
   await expect(page.getByRole("status")).toContainText("Admission confirmed on-chain");
+  await expectTransactionLink(page, true);
   await expect(page.getByTestId("account-state")).toHaveText("Active");
   await expect(page.getByText("Admission checks — all passed")).toBeVisible();
   await page.reload();
@@ -71,6 +83,7 @@ test("UC1: no credential is refused, DE is admitted and receives, US is denied",
   await page.goto("/operator");
   await page.getByRole("button", { name: "Allocate 25,000" }).first().click();
   await expect(page.getByRole("status")).toContainText("25,000 MERID received");
+  await expectTransactionLink(page, true);
 
   // Screen 6: a genuine, current credential refused on region alone.
   await issue(page, "mark");
@@ -78,6 +91,7 @@ test("UC1: no credential is refused, DE is admitted and receives, US is denied",
   await page.getByRole("button", { name: "Request access" }).click();
   await expect(page.getByRole("status")).toContainText("Region not accepted");
   await expect(page.getByRole("status")).toContainText("Claim · 13");
+  await expectTransactionLink(page, false);
   await expect(page.getByTestId("account-state")).toHaveText("Frozen");
 
   const state = await (await request.get("/api/demo")).json();
