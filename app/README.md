@@ -25,6 +25,15 @@ record from any issuer the registry authorizes; the gate does not check which
 issuer signed. The authority's key signs once, during seeding, and is not stored.
 The server keeps the operator and issuer keys so it can relay their actions.
 
+This follows the [SAS data flow](https://solana.com/docs/tools/attestations/overview#data-flow).
+SAS itself enforces the split: the issuer cannot create schemas, and the
+authority is not an authorized issuer, so it cannot sign attestations.
+`uc1_separates_credential_authority_and_attestation_issuer` in `tests/e2e.rs`
+checks both against the pinned SAS program.
+
+Sessions seeded before this role separation must be reseeded with
+`mise run seed`. The app says so when it loads one.
+
 ## Run locally
 
 Build the gate from the repository root:
@@ -148,8 +157,9 @@ browser fails to start.
 The browser test builds and runs the production website, starts an isolated
 surfnet on port 18999, and serves the test website on port 3300. It seeds a
 separate session under `.demo/e2e` and walks the presentation above across the
-operator, authority, issuer and investor screens. It checks the raw on-chain
-token states for both investors, that no screen scrolls horizontally at phone
+operator, authority, issuer and investor screens. It checks the seeded roles on-chain (the
+credential's authority, its single authorized signer, and each attestation's
+signer), the raw token states for both investors, that no screen scrolls horizontally at phone
 width, that the API exposes no signing keys, and that it rejects unsupported
 actions and foreign origins. Test services stop when the suite ends. The regular
 demo session is preserved.

@@ -1,3 +1,4 @@
+import { getAddressDecoder } from "@solana/kit";
 import { test, expect, type Page } from "@playwright/test";
 
 // UC1 in a browser, against the real gate on an isolated surfnet
@@ -15,13 +16,20 @@ async function surfnet(method: string, params: unknown[]) {
   return (await response.json()).result;
 }
 
-async function tokenState(token: string) {
+async function accountData(address: string) {
   const result = await surfnet("getAccountInfo", [
-    token,
+    address,
     { encoding: "base64", commitment: "confirmed" },
   ]);
-  return Buffer.from(result.value.data[0], "base64")[108];
+  return Buffer.from(result.value.data[0], "base64");
 }
+
+async function tokenState(token: string) {
+  return (await accountData(token))[108];
+}
+
+const readKey = (data: Buffer, offset: number) =>
+  getAddressDecoder().decode(data.subarray(offset, offset + 32));
 
 /** Open the collapsed chain details and return them. */
 async function chainDetails(page: Page) {
@@ -118,6 +126,25 @@ test("UC1: no credential is refused, DE is admitted and receives, US is denied",
 
   const state = await (await request.get("/api/demo")).json();
   expect(JSON.stringify(state)).not.toMatch(/Seed|privateKey|secretKey/);
+
+  // The roles are separate on-chain, not just in labels or the session file.
+  // SAS credential: `0 | authority | name (u32 + bytes) | signers (u32 + keys)`.
+  const { registry, issuer, fund } = state;
+  const credential = await accountData(registry.credential);
+  expect(credential[0]).toBe(0);
+  expect(readKey(credential, 1)).toBe(registry.authority);
+  expect(new Set([registry.authority, issuer.address, fund.configAuthority]).size).toBe(3);
+  const nameLength = credential.readUInt32LE(33);
+  expect(credential.subarray(37, 37 + nameLength).toString()).toBe(registry.credentialName);
+  // Exactly one authorized signer, the issuer: the authority is not one.
+  expect(credential.readUInt32LE(37 + nameLength)).toBe(1);
+  expect(readKey(credential, 41 + nameLength)).toBe(issuer.address);
+  // Every attestation was signed by the issuer. Its `signer` sits after the
+  // variable-length claim: `101 + data_len`.
+  for (const investor of state.investors) {
+    const evidence = await accountData(investor.credential.address);
+    expect(readKey(evidence, 101 + evidence.readUInt32LE(97))).toBe(issuer.address);
+  }
   expect(await tokenState(state.investors[0].token)).toBe(1);
   expect(await tokenState(state.investors[1].token)).toBe(2);
   await page.screenshot({ path: "test-results/uc1-denial.png", fullPage: true });
