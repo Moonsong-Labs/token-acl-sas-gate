@@ -4,6 +4,7 @@ import Link from "next/link";
 import { CheckList } from "@/components/CheckList";
 import { PageTitle, Screen } from "@/components/Chrome";
 import { ActionError, Unavailable } from "@/components/Notice";
+import { ChainDetails } from "@/components/ChainDetails";
 import { TransactionLink } from "@/components/TransactionLink";
 import { HEADLINES, steps, type Decision } from "@/lib/gate";
 import {
@@ -97,6 +98,10 @@ export function InvestorScreen({ who }: { who: InvestorId }) {
   const decision = result?.decision ?? null;
   const { active, credential } = investor;
   const expired = credential && credential.expiry !== 0 && state.now >= credential.expiry;
+  // Admission is a decision the gate made when access was requested; it does not
+  // re-check an active account. So an active account can hold a credential that
+  // has since expired, or none at all, and the screen must not imply otherwise.
+  const lapsed = active && (!credential || expired);
 
   const tone = active
     ? { color: "var(--ok)", bg: "var(--okbg)", border: "#BFDDC9", wash: "#EEF6F0" }
@@ -132,7 +137,7 @@ export function InvestorScreen({ who }: { who: InvestorId }) {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(330px, 1fr))",
+          gridTemplateColumns: "repeat(auto-fit, minmax(min(330px, 100%), 1fr))",
           gap: 20,
           alignItems: "start",
         }}
@@ -177,8 +182,8 @@ export function InvestorScreen({ who }: { who: InvestorId }) {
             <p style={{ fontSize: 14.5, color: "var(--ink2)", lineHeight: 1.5 }}>
               {active ? (
                 <>
-                  Your credential meets the fund&rsquo;s policy. Your account is active — you can
-                  receive and transact <strong>{fund.symbol}</strong>.
+                  This account was admitted when its credential met the fund&rsquo;s policy. It is
+                  active — you can receive and transact <strong>{fund.symbol}</strong>.
                 </>
               ) : (
                 <>
@@ -205,6 +210,27 @@ export function InvestorScreen({ who }: { who: InvestorId }) {
               </div>
             </div>
 
+            {lapsed && (
+              <div
+                data-testid="lapsed-admission"
+                className="card"
+                style={{
+                  padding: "13px 15px",
+                  background: "var(--warnbg)",
+                  borderColor: "#EAD9A8",
+                  fontSize: 13,
+                  color: "#6C4E12",
+                  lineHeight: 1.5,
+                }}
+              >
+                <strong>
+                  {credential ? "Your credential has since expired." : "Your credential is no longer on file."}
+                </strong>{" "}
+                The gate checks a credential only when access is requested, so this does not freeze
+                the account on its own. It stays active until the fund&rsquo;s sponsor freezes it.
+              </div>
+            )}
+
             {decision && result && <Outcome decision={decision} message={result.message} />}
             {decision?.outcome === "admitted" && (
               <p role="status" style={{ fontSize: 13, color: "var(--ok)" }}>
@@ -212,6 +238,7 @@ export function InvestorScreen({ who }: { who: InvestorId }) {
                 <TransactionLink href={result?.transaction} />
               </p>
             )}
+            <ChainDetails result={result} />
 
             <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
               <button
@@ -245,13 +272,28 @@ export function InvestorScreen({ who }: { who: InvestorId }) {
           {decision && decision.outcome !== "rejected" ? (
             <CheckList
               steps={steps(decision)}
-              heading={decision.outcome === "admitted" ? "Admission checks — all passed" : "How the check ran"}
+              heading={
+                decision.outcome === "admitted"
+                  ? "Admission checks — all passed when requested"
+                  : "How the check ran"
+              }
               note={
                 decision.outcome === "admitted"
                   ? undefined
                   : "The gate stops at the first failure, so the checks after it never ran."
               }
             />
+          ) : active ? (
+            <div
+              className="card"
+              style={{ padding: "18px 20px", display: "flex", flexDirection: "column", gap: 9 }}
+            >
+              <h2 className="lbl">Admission</h2>
+              <p style={{ fontSize: 13.5, color: "var(--ink2)", lineHeight: 1.55 }}>
+                The gate admitted this account when access was requested. It does not re-check an
+                active account: its checks run again only when a frozen account asks for access.
+              </p>
+            </div>
           ) : (
             <div
               className="card"

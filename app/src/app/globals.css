@@ -213,3 +213,29 @@ a:hover {
   white-space: nowrap;
   border: 0;
 }
+
+.chain-details {
+  font-size: 12.5px;
+  color: var(--ink2);
+}
+
+.chain-details summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--accent);
+  width: fit-content;
+}
+
+.chain-details pre {
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  max-height: 240px;
+  overflow: auto;
+  background: #fcfbf8;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  line-height: 1.5;
+  white-space: pre;
+}

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { PageTitle, Screen } from "@/components/Chrome";
 import { ActionError, Unavailable } from "@/components/Notice";
+import { ChainDetails } from "@/components/ChainDetails";
 import { TransactionLink } from "@/components/TransactionLink";
 import { formatDuration, regionList, short, useDemo } from "@/lib/client";
 
@@ -83,7 +84,7 @@ export default function OperatorScreen() {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+          gridTemplateColumns: "repeat(auto-fit, minmax(min(320px, 100%), 1fr))",
           gap: 18,
           alignItems: "start",
         }}
@@ -176,6 +177,7 @@ export default function OperatorScreen() {
                       <TransactionLink href={shown.transaction} />
                     </p>
                   )}
+                  <ChainDetails result={shown} />
                 </div>
               );
             })}

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useId, useState } from "react";
 import { PageTitle, Screen } from "@/components/Chrome";
 import { ActionError, Unavailable } from "@/components/Notice";
+import { ChainDetails } from "@/components/ChainDetails";
 import { TransactionLink } from "@/components/TransactionLink";
 import {
   formatDate,
@@ -61,7 +62,7 @@ export default function IssuerScreen() {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))",
+          gridTemplateColumns: "repeat(auto-fit, minmax(min(340px, 100%), 1fr))",
           gap: 22,
           alignItems: "start",
         }}
@@ -88,7 +89,7 @@ export default function IssuerScreen() {
             </select>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 14 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(150px, 100%), 1fr))", gap: 14 }}>
             <div>
               <label className="flab" htmlFor={ids.type}>
                 Credential type
@@ -108,7 +109,7 @@ export default function IssuerScreen() {
             </div>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 14 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(150px, 100%), 1fr))", gap: 14 }}>
             <div>
               <label className="flab" htmlFor={ids.verified}>
                 KYC completed
@@ -184,6 +185,7 @@ export default function IssuerScreen() {
               <TransactionLink href={result.transaction} />
             </p>
           )}
+          <ChainDetails result={result} />
         </section>
 
         <section style={{ display: "flex", flexDirection: "column", gap: 16 }}>
