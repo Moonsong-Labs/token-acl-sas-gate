@@ -193,6 +193,34 @@ test("UC1: no credential is refused, DE is admitted and receives, US is denied",
   await page.getByRole("link", { name: "Receive MERID" }).click();
   await expect(page.getByText("100,000 MERID")).toBeVisible();
 
+  // A read started by navigating during an action must not overwrite that
+  // action's newer result. Force the worst ordering: the allocation is held
+  // until a navigation read has fetched the pre-allocation state, and that read
+  // is delivered only after the allocation has finished. A screen that does not
+  // read during an action releases the allocation after a short wait instead.
+  let navigationFetched!: () => void;
+  const fetchedOld = new Promise<void>((resolve) => (navigationFetched = resolve));
+  const allocated = page.waitForResponse(
+    (r) => r.url().endsWith("/api/demo") && r.request().method() === "POST",
+  );
+  await page.route("**/api/demo", async (route) => {
+    if (route.request().method() === "POST") {
+      await Promise.race([fetchedOld, new Promise((r) => setTimeout(r, 1500))]);
+      return route.continue();
+    }
+    const stale = await route.fetch();
+    navigationFetched();
+    await allocated;
+    await route.fulfill({ response: stale });
+  });
+  await page.getByRole("button", { name: "Allocate 25,000" }).first().click();
+  await page.getByRole("link", { name: "Open investor view" }).click();
+  await allocated;
+  await expect(page.getByText("125,000")).toBeVisible();
+  await page.waitForTimeout(1000); // room for a late read to land, if one was made
+  await expect(page.getByText("125,000")).toBeVisible();
+  await page.unroute("**/api/demo");
+
   const paths = ["/", "/operator", "/authority", "/issuer", "/investor/lena", "/investor/mark", "/status"];
   for (const width of [320, 360, 390]) {
     await page.setViewportSize({ width, height: 844 });

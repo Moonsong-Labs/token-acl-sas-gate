@@ -45,39 +45,49 @@ export function DemoProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [results, setResults] = useState<Demo["results"]>({});
-  /** Bumped by every action, so a re-read it overtook is not applied. */
-  const actionsStarted = useRef(0);
+  // Snapshots come from reads and from actions, and must only ever move the
+  // screen forward. An action's own result is the newest state when it lands,
+  // so: no navigation read starts while an action runs; `epoch` changes when an
+  // action starts and when it settles, so a read that spans either is dropped;
+  // and of overlapping reads, only the most recently started one applies.
+  const epoch = useRef(0);
+  const inFlight = useRef(0);
+  const lastRead = useRef(0);
   const loaded = useRef(false);
   const pathname = usePathname();
+
+  /** A snapshot, or `undefined` if a newer source superseded it in flight. */
+  const read = useCallback(async (): Promise<DemoSnapshot | undefined> => {
+    const id = ++lastRead.current;
+    const startedIn = epoch.current;
+    const response = await fetch("/api/demo", { cache: "no-store" });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error);
+    return epoch.current === startedIn && lastRead.current === id ? data : undefined;
+  }, []);
 
   const refresh = useCallback(async () => {
     setBusy(true);
     try {
-      const response = await fetch("/api/demo", { cache: "no-store" });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error);
-      setState(data);
+      const data = await read();
+      if (data) setState(data);
       setError("");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unable to load the demo.");
     } finally {
       setBusy(false);
     }
-  }, []);
+  }, [read]);
 
   // On navigation, re-read without disabling the screen or flashing an error:
-  // a failed read leaves the last snapshot, and Refresh shows any error. The
-  // result is dropped if an action started meanwhile, since that action's own
-  // result is newer.
+  // a failed read leaves the last snapshot, and Refresh shows any error.
   const quietRefresh = useCallback(async () => {
-    const started = actionsStarted.current;
+    if (inFlight.current > 0) return;
     try {
-      const response = await fetch("/api/demo", { cache: "no-store" });
-      if (!response.ok) return;
-      const data = await response.json();
-      if (actionsStarted.current === started) setState(data);
+      const data = await read();
+      if (data) setState(data);
     } catch {}
-  }, []);
+  }, [read]);
 
   // The first load shows progress and errors; later screens re-read quietly.
   useEffect(() => {
@@ -90,7 +100,8 @@ export function DemoProvider({ children }: { children: ReactNode }) {
 
   const run = useCallback(
     async (action: Action, investor: InvestorId, options?: IssueOptions) => {
-      actionsStarted.current += 1;
+      inFlight.current += 1;
+      epoch.current += 1;
       setBusy(true);
       // One ID per click. If the response is lost in transit, the same request
       // is sent once more under the same ID, and the server returns the
@@ -112,6 +123,8 @@ export function DemoProvider({ children }: { children: ReactNode }) {
       } catch (e) {
         setError(e instanceof Error ? e.message : "Action failed.");
       } finally {
+        inFlight.current -= 1;
+        epoch.current += 1;
         setBusy(false);
       }
     },
