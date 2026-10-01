@@ -197,7 +197,7 @@ export type IssueOptions = {
   validity: keyof typeof VALIDITY;
 };
 
-/** The fund's initial allocation to an admitted investor. */
+/** What the fund allocates to an investor per request; repeatable. */
 const ALLOCATION = 25_000n;
 
 export type ActionResult = {
@@ -215,11 +215,24 @@ export type ActionResult = {
 // Serialize local demo actions; double clicks cannot issue the same PDA twice.
 let pending: Promise<unknown> = Promise.resolve();
 
+/**
+ * Outcomes by request ID, so a retry of the same request (e.g. after its
+ * response was lost) returns the original outcome rather than sending its
+ * transaction again. Every outcome is kept, failures included: a request that
+ * failed after its send may still have landed. A new request gets a new ID and
+ * runs again, which is what lets an investor receive MERID more than once.
+ */
+const outcomes = new Map<string, Promise<ActionResult>>();
+const REMEMBERED = 500;
+
 export function act(
   action: "issue" | "activate" | "allocate",
   id: InvestorId,
   options: IssueOptions = { verified: "today", validity: "year" },
+  requestId?: string,
 ): Promise<ActionResult> {
+  const seen = requestId ? outcomes.get(requestId) : undefined;
+  if (seen) return seen;
   const run = pending.then(async () => {
     const m = await manifest();
     const investor = m.investors[id];
@@ -230,12 +243,6 @@ export function act(
       );
     if (action === "activate" && current.active)
       throw new Error("This account is already active.");
-    // Read from chain before every send, so a retry after a lost response is
-    // refused rather than minting a second allocation.
-    if (action === "allocate" && current.balance > 0)
-      throw new Error(
-        `${investor.name} has already received the initial ${m.fund.symbol} allocation.`,
-      );
     const payer = await signer(m.payerSeed);
 
     // Only the send is classified: a chain or gate rejection is an outcome to
@@ -318,6 +325,11 @@ export function act(
     } satisfies ActionResult;
   });
   pending = run.catch(() => undefined);
+  if (requestId) {
+    outcomes.set(requestId, run);
+    // Keep the map bounded; Map iterates oldest first.
+    if (outcomes.size > REMEMBERED) outcomes.delete(outcomes.keys().next().value!);
+  }
   return run;
 }
 

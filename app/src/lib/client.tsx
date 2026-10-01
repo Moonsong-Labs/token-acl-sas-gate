@@ -65,12 +65,18 @@ export function DemoProvider({ children }: { children: ReactNode }) {
   const run = useCallback(
     async (action: Action, investor: InvestorId, options?: IssueOptions) => {
       setBusy(true);
-      try {
-        const response = await fetch("/api/demo", {
+      // One ID per click. If the response is lost in transit, the same request
+      // is sent once more under the same ID, and the server returns the
+      // original outcome rather than sending the transaction again.
+      const body = JSON.stringify({ action, investor, options, requestId: crypto.randomUUID() });
+      const post = () =>
+        fetch("/api/demo", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action, investor, options }),
+          body,
         });
+      try {
+        const response = await post().catch(post);
         const data = await response.json();
         if (!response.ok) throw new Error(data.error);
         if (data.state) setState(data.state);

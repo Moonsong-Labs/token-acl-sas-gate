@@ -155,14 +155,13 @@ export default function OperatorScreen() {
                       {investor.balance.toLocaleString("en-GB")} {fund.symbol}
                     </span>
                     <span style={{ flexGrow: 1 }} />
-                    {/* One initial allocation per investor; the server refuses a second. */}
                     <button
                       className="btn ghost"
                       type="button"
-                      disabled={busy || investor.balance > 0}
+                      disabled={busy}
                       onClick={() => run("allocate", investor.id)}
                     >
-                      {investor.balance > 0 ? "Allocated" : "Allocate 25,000"}
+                      Allocate 25,000
                     </button>
                   </div>
                   {shown && (

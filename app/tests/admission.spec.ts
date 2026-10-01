@@ -114,15 +114,21 @@ test("UC1: no credential is refused, DE is admitted and receives, US is denied",
   await page.getByRole("button", { name: "Allocate 25,000" }).first().click();
   await expect(page.getByRole("status")).toContainText("25,000 MERID received");
   await expectTransactionLink(page, true);
-  // The allocation is idempotent: the button closes, and a retry that reaches
-  // the server anyway (e.g. after a lost response) is refused on chain state.
-  await expect(page.getByRole("button", { name: "Allocated" })).toBeDisabled();
-  const retry = await request.post("/api/demo", {
-    headers: { Origin: "http://127.0.0.1:3300" },
-    data: { action: "allocate", investor: "lena" },
-  });
-  expect(retry.status()).toBe(400);
-  expect((await retry.json()).error).toContain("already received the initial MERID allocation");
+  // An active account can receive MERID repeatedly: a second click mints again.
+  await page.getByRole("button", { name: "Allocate 25,000" }).first().click();
+  await expect(page.getByRole("status")).toContainText("25,000 MERID received");
+  // A retried request (same ID, e.g. after a lost response) returns the original
+  // outcome and mints nothing more.
+  const requestId = crypto.randomUUID();
+  const allocate = () =>
+    request.post("/api/demo", {
+      headers: { Origin: "http://127.0.0.1:3300" },
+      data: { action: "allocate", investor: "lena", requestId },
+    });
+  const first = await (await allocate()).json();
+  const replay = await (await allocate()).json();
+  expect(first.ok).toBe(true);
+  expect(replay.signature).toBe(first.signature);
 
   // Screen 6: a genuine, current credential refused on region alone.
   await issue(page, "mark");
@@ -156,7 +162,8 @@ test("UC1: no credential is refused, DE is admitted and receives, US is denied",
   }
   expect(await tokenState(state.investors[0].token)).toBe(1);
   expect(await tokenState(state.investors[1].token)).toBe(2);
-  expect(state.investors[0].balance).toBe(25_000);
+  // Two clicks and one request sent twice: exactly three allocations.
+  expect(state.investors[0].balance).toBe(75_000);
   await page.screenshot({ path: "test-results/uc1-denial.png", fullPage: true });
 
   // Admission is a past decision. Once Lena's credential lapses her account
