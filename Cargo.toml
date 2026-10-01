@@ -3,6 +3,7 @@ name = "doors-of-durin"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.94"
+license = "MIT"
 
 [lib]
 crate-type = ["cdylib", "lib"]

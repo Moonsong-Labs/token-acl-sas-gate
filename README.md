@@ -288,3 +288,7 @@ setup and admission flow are in `tests/support/admission.rs`.
 
 The `no-entrypoint` feature allows other crates to depend on the processor
 without exporting the Solana entrypoint.
+
+## License
+
+Licensed under the [MIT License](LICENSE). Copyright (c) 2026 Moonsong Labs Inc.

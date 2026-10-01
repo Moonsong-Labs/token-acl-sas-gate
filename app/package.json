@@ -4,6 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "description": "Demo web frontend for the Token ACL gate, driven against a local surfnet.",
+  "license": "MIT",
   "scripts": {
     "dev": "next dev --hostname 127.0.0.1",
     "build": "next build",
