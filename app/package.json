@@ -10,7 +10,7 @@
     "start": "next start --hostname 127.0.0.1",
     "typecheck": "tsc --noEmit",
     "seed": "tsx scripts/seed.ts",
-    "surfnet": "surfpool start --offline --no-tui --no-studio --no-deploy -y --airdrop-amount 0",
+    "surfnet": "surfpool start --offline --no-tui --no-deploy -y --airdrop-amount 0",
     "test:e2e": "npm run build && playwright test"
   },
   "dependencies": {

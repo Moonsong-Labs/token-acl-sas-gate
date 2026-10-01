@@ -71,6 +71,29 @@ export function endpoint() {
     throw new Error("The demo requires a local surfnet RPC.");
   return value;
 }
+/**
+ * Surfpool Studio, the surfnet's local explorer. It opens a transaction from
+ * `/?t=<signature>`. Local HTTP only, like the RPC endpoint.
+ */
+export function studio() {
+  const value = process.env.DEMO_STUDIO_URL ?? "http://127.0.0.1:18488";
+  const url = new URL(value);
+  if (
+    url.protocol !== "http:" ||
+    !["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)
+  )
+    throw new Error("The demo requires a local Surfpool Studio URL.");
+  return url.origin;
+}
+/** `undefined` when `DEMO_STUDIO_URL` is unusable: the link is never worth failing for. */
+export function transactionLink(signature: string): string | undefined {
+  try {
+    return `${studio()}/?t=${encodeURIComponent(signature)}`;
+  } catch (error) {
+    console.warn(`No transaction link: ${error instanceof Error ? error.message : error}`);
+    return undefined;
+  }
+}
 export class RpcFailure extends Error {
   constructor(
     message: string,
@@ -182,40 +205,74 @@ export function createAccount(
     signed(target, true),
   ]);
 }
+/** Ledger time in Unix seconds, as the gate reads it from `Clock`. */
+export async function ledgerNow(): Promise<bigint> {
+  const clock = await account(
+    address("SysvarC1ock11111111111111111111111111111111"),
+  );
+  if (!clock) throw new Error("Clock unavailable");
+  return clock.data.readBigInt64LE(32);
+}
+/**
+ * SAS `CreateAttestation`, signed by an authorized signer of the credential,
+ * i.e. an issuer the credential authority registered. The subject is bound
+ * through `nonce = wallet`; the claim is the UC1 schema: `jurisdiction`
+ * (String) then `verified_at` (i64).
+ */
 export async function issue(
   payer: KeyPairSigner,
   issuer: KeyPairSigner,
   credential: Address,
   schema: Address,
   wallet: Address,
-  token: Address,
-  mint: Address,
   jurisdiction: string,
+  verifiedAt: bigint,
+  expiry: bigint,
 ) {
-  const a = await addresses(mint, credential, schema, wallet, token);
-  const clock = await account(
-    address("SysvarC1ock11111111111111111111111111111111"),
+  const evidence = await pda(
+    SAS,
+    "attestation",
+    key(credential),
+    key(schema),
+    key(wallet),
   );
-  if (!clock) throw new Error("Clock unavailable");
-  const now = clock.data.readBigInt64LE(32);
   return send(payer, [
     ix(
       SAS,
       bytes(
         [6],
         key(wallet),
-        str(bytes(str(jurisdiction), num(now))),
-        num(now + 86400n),
+        str(bytes(str(jurisdiction), num(verifiedAt))),
+        num(expiry),
       ),
       [
         signed(payer, true),
         signed(issuer),
         ro(credential),
         ro(schema),
-        rw(a.evidence),
+        rw(evidence),
         ro(SYSTEM),
       ],
     ),
+  ]);
+}
+/**
+ * Token-2022 `MintTo`. A frozen destination is refused by Token-2022 itself,
+ * which is the point of the allocation step: only admitted accounts receive.
+ */
+export async function mintTo(
+  payer: KeyPairSigner,
+  mintAuthority: KeyPairSigner,
+  mint: Address,
+  token: Address,
+  amount: bigint,
+) {
+  return send(payer, [
+    ix(TOKEN, bytes([7], num(amount)), [
+      rw(mint),
+      rw(token),
+      signed(mintAuthority),
+    ]),
   ]);
 }
 export async function activate(

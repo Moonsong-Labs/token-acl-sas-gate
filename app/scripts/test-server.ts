@@ -4,6 +4,9 @@ const env = {
   ...process.env,
   DEMO_RPC_URL: "http://127.0.0.1:18999",
   DEMO_SESSION_FILE: ".demo/e2e/session.json",
+  // Links point at the test surfnet's Studio port. The suite checks the links,
+  // not Studio itself, so Studio stays disabled below.
+  DEMO_STUDIO_URL: "http://127.0.0.1:19488",
 };
 const children: ChildProcess[] = [];
 function start(command: string, args: string[]) {
