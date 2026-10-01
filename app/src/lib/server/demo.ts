@@ -208,7 +208,8 @@ export type ActionResult = {
   /** Surfpool Studio link to the confirmed transaction. Refusals have none. */
   transaction?: string;
   logs?: string[];
-  state: DemoSnapshot;
+  /** Absent when the chain could not be re-read after a confirmed transaction. */
+  state?: DemoSnapshot;
 };
 
 // Serialize local demo actions; double clicks cannot issue the same PDA twice.
@@ -229,6 +230,12 @@ export function act(
       );
     if (action === "activate" && current.active)
       throw new Error("This account is already active.");
+    // Read from chain before every send, so a retry after a lost response is
+    // refused rather than minting a second allocation.
+    if (action === "allocate" && current.balance > 0)
+      throw new Error(
+        `${investor.name} has already received the initial ${m.fund.symbol} allocation.`,
+      );
     const payer = await signer(m.payerSeed);
 
     // Only the send is classified: a chain or gate rejection is an outcome to
@@ -273,23 +280,40 @@ export function act(
       return rejection(action, error, !current.credential, await snapshot());
     }
 
-    const state = await snapshot();
-    const after = state.investors.find((i) => i.id === id)!;
-    if (action === "activate" && !after.active)
-      throw new Error(
-        "Transaction confirmed but the account is not active. Refresh to inspect.",
-      );
+    // The transaction has committed. Nothing below may report it as failed:
+    // the caller would retry, and a retry repeats a committed action. A failed
+    // re-read becomes a warning on a confirmed result, never an error.
+    const transaction = transactionLink(signature);
+    let state: DemoSnapshot | undefined;
+    let unread = "";
+    try {
+      state = await snapshot();
+    } catch (error) {
+      unread = ` The screen could not reload chain state (${
+        error instanceof Error ? error.message : "unknown error"
+      }); refresh before acting again.`;
+    }
+    const after = state?.investors.find((i) => i.id === id);
+    if (action === "activate" && after && !after.active)
+      return {
+        ok: false,
+        message:
+          "Transaction confirmed, but the account is not active. Inspect the transaction before retrying.",
+        signature,
+        transaction,
+        state,
+      } satisfies ActionResult;
     return {
       ok: true,
       message:
-        action === "issue"
+        (action === "issue"
           ? "Credential issued and confirmed."
           : action === "activate"
             ? "Access granted. Admission confirmed on-chain."
-            : `${ALLOCATION.toLocaleString("en-GB")} ${m.fund.symbol} received.`,
+            : `${ALLOCATION.toLocaleString("en-GB")} ${m.fund.symbol} received.`) + unread,
       decision: action === "activate" ? { outcome: "admitted" } : undefined,
       signature,
-      transaction: transactionLink(signature),
+      transaction,
       state,
     } satisfies ActionResult;
   });

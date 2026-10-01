@@ -85,8 +85,14 @@ export function studio() {
     throw new Error("The demo requires a local Surfpool Studio URL.");
   return url.origin;
 }
-export function transactionLink(signature: string) {
-  return `${studio()}/?t=${encodeURIComponent(signature)}`;
+/** `undefined` when `DEMO_STUDIO_URL` is unusable: the link is never worth failing for. */
+export function transactionLink(signature: string): string | undefined {
+  try {
+    return `${studio()}/?t=${encodeURIComponent(signature)}`;
+  } catch (error) {
+    console.warn(`No transaction link: ${error instanceof Error ? error.message : error}`);
+    return undefined;
+  }
 }
 export class RpcFailure extends Error {
   constructor(

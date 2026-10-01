@@ -73,7 +73,7 @@ export function DemoProvider({ children }: { children: ReactNode }) {
         });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error);
-        setState(data.state);
+        if (data.state) setState(data.state);
         setResults((current) => ({ ...current, [investor]: { ...data, action } }));
         setError("");
       } catch (e) {

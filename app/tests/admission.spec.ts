@@ -114,6 +114,15 @@ test("UC1: no credential is refused, DE is admitted and receives, US is denied",
   await page.getByRole("button", { name: "Allocate 25,000" }).first().click();
   await expect(page.getByRole("status")).toContainText("25,000 MERID received");
   await expectTransactionLink(page, true);
+  // The allocation is idempotent: the button closes, and a retry that reaches
+  // the server anyway (e.g. after a lost response) is refused on chain state.
+  await expect(page.getByRole("button", { name: "Allocated" })).toBeDisabled();
+  const retry = await request.post("/api/demo", {
+    headers: { Origin: "http://127.0.0.1:3300" },
+    data: { action: "allocate", investor: "lena" },
+  });
+  expect(retry.status()).toBe(400);
+  expect((await retry.json()).error).toContain("already received the initial MERID allocation");
 
   // Screen 6: a genuine, current credential refused on region alone.
   await issue(page, "mark");
@@ -147,6 +156,7 @@ test("UC1: no credential is refused, DE is admitted and receives, US is denied",
   }
   expect(await tokenState(state.investors[0].token)).toBe(1);
   expect(await tokenState(state.investors[1].token)).toBe(2);
+  expect(state.investors[0].balance).toBe(25_000);
   await page.screenshot({ path: "test-results/uc1-denial.png", fullPage: true });
 
   // Admission is a past decision. Once Lena's credential lapses her account
