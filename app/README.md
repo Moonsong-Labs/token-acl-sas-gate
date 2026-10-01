@@ -154,15 +154,24 @@ mise run e2e
 (`libnss3`, `libnspr4`, `libasound2`), which requires `sudo`. Without them the
 browser fails to start.
 
-The browser test builds and runs the production website, starts an isolated
-surfnet on port 18999, and serves the test website on port 3300. It seeds a
-separate session under `.demo/e2e` and walks the presentation above across the
-operator, authority, issuer and investor screens. It checks the seeded roles on-chain (the
-credential's authority, its single authorized signer, and each attestation's
-signer), the raw token states for both investors, that no screen scrolls horizontally at phone
-width, that the API exposes no signing keys, and that it rejects unsupported
-actions and foreign origins. Test services stop when the suite ends. The regular
-demo session is preserved.
+The browser tests build and run the production website, start an isolated
+surfnet on port 18999, and serve the test website on port 3300. The website
+reaches the surfnet through a test-only proxy on port 18998 that can be told to
+fail chosen RPC calls. The tests seed a separate session under `.demo/e2e`.
+
+- `tests/admission.spec.ts` walks the presentation above across the operator,
+  authority, issuer and investor screens. It checks the seeded roles on-chain
+  (the credential's authority, its single authorized signer, and each
+  attestation's signer), the raw token states for both investors, that no screen
+  scrolls horizontally at phone width, that the API exposes no signing keys, and
+  that it rejects unsupported actions and foreign origins.
+- `tests/resilience.spec.ts` uses the proxy to check how outcomes are reported
+  when the RPC misbehaves: a transaction whose confirmation cannot be read is
+  reported as unconfirmed with its signature, never as rejected; a gate denial
+  survives a failed read after it; and errors do not linger.
+- `tests/units.spec.ts` checks the pure helpers without a browser.
+
+Test services stop when the suite ends. The regular demo session is preserved.
 
 Run `mise run check` and `mise run verify` from the repository root for the Rust
 checks, SBF build, and surfnet integration suite.

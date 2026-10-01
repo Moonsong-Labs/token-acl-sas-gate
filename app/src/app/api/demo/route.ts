@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { isLocalHost } from "@/lib/server/chain";
 import {
   act,
   snapshot,
@@ -12,7 +13,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 function local(request: NextRequest) {
   const host = request.headers.get("host") ?? "";
-  if (!/^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(host))
+  if (!isLocalHost(host))
     throw new Error("This demo is local only.");
   const origin = request.headers.get("origin");
   if (request.method === "POST" && origin !== `http://${host}`)

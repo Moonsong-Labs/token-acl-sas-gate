@@ -11,6 +11,7 @@ import {
   ledgerNow,
   transactionLink,
   RpcFailure,
+  Unconfirmed,
   GATE,
   endpoint,
   rpc,
@@ -25,7 +26,7 @@ import {
   decodeSchema,
   decodeTokenAccount,
 } from "./accounts";
-import { CODES, type Decision } from "../gate";
+import { CODES, locate, type Decision } from "../gate";
 
 export const INVESTORS = ["lena", "mark"] as const;
 export type InvestorId = (typeof INVESTORS)[number];
@@ -129,7 +130,6 @@ export async function snapshot() {
           signer: evidence.signer,
           issuerName:
             evidence.signer === m.issuer.address ? m.issuer.name : null,
-          subjectMatches: evidence.nonce === investor.wallet,
         },
       };
     }),
@@ -142,6 +142,8 @@ export async function snapshot() {
       symbol: m.fund.symbol,
       mint: m.fund.mint,
       decimals: mint.decimals,
+      /** Whole tokens minted per allocation, for the screens' labels. */
+      allocation: Number(ALLOCATION),
       config: shared.config,
       configAuthority: config.authority,
       // The four setup steps that must all hold before anyone can ask for access
@@ -208,9 +210,14 @@ export type ActionResult = {
   /** Surfpool Studio link to the confirmed transaction. Refusals have none. */
   transaction?: string;
   logs?: string[];
-  /** Absent when the chain could not be re-read after a confirmed transaction. */
+  /** Sent, but whether it landed is unknown: refresh rather than retry. */
+  unconfirmed?: boolean;
+  /** Absent when the chain could not be re-read after the transaction. */
   state?: DemoSnapshot;
 };
+
+/** Chain state for a result, or `undefined`: a failed read never changes an outcome. */
+const reread = () => snapshot().catch(() => undefined);
 
 // Serialize local demo actions; double clicks cannot issue the same PDA twice.
 let pending: Promise<unknown> = Promise.resolve();
@@ -222,7 +229,10 @@ let pending: Promise<unknown> = Promise.resolve();
  * failed after its send may still have landed. A new request gets a new ID and
  * runs again, which is what lets an investor receive MERID more than once.
  */
-const outcomes = new Map<string, Promise<ActionResult>>();
+const outcomes = new Map<
+  string,
+  { action: string; id: InvestorId; result: Promise<ActionResult> }
+>();
 const REMEMBERED = 500;
 
 export function act(
@@ -232,11 +242,18 @@ export function act(
   requestId?: string,
 ): Promise<ActionResult> {
   const seen = requestId ? outcomes.get(requestId) : undefined;
-  if (seen) return seen;
+  if (seen) {
+    // A retry is the same request: replaying another action's outcome under it
+    // would be wrong, so a reused ID is refused.
+    if (seen.action !== action || seen.id !== id)
+      throw new Error("This request ID was already used for a different action.");
+    return seen.result;
+  }
   const run = pending.then(async () => {
     const m = await manifest();
     const investor = m.investors[id];
-    const current = (await snapshot()).investors.find((i) => i.id === id)!;
+    const before = await snapshot();
+    const current = before.investors.find((i) => i.id === id)!;
     if (action === "issue" && current.credential)
       throw new Error(
         "This investor already has a credential. Renewal arrives with the lifecycle screens; reseed to start over.",
@@ -244,15 +261,17 @@ export function act(
     if (action === "activate" && current.active)
       throw new Error("This account is already active.");
     const payer = await signer(m.payerSeed);
+    // Reads the send depends on happen first, outside the classification below:
+    // a read failure here means nothing was sent, and surfaces as an error.
+    const now = action === "issue" ? await ledgerNow() : 0n;
 
-    // Only the send is classified: a chain or gate rejection is an outcome to
-    // show, anything else is a failure to surface. Reading state afterwards is
-    // deliberately outside this, so a flaky read after a confirmed transaction
-    // can never be reported as a rejection.
+    // Only the send is classified. `send()` throws RpcFailure only for a
+    // refusal (preflight or on-chain), Unconfirmed when it may have landed, and
+    // a plain error when nothing was sent. Reading state afterwards is outside
+    // this, so a flaky read can never turn an outcome into something else.
     let signature: string;
     try {
       if (action === "issue") {
-        const now = await ledgerNow();
         signature = await issue(
           payer,
           await signer(m.issuerSeed),
@@ -273,18 +292,27 @@ export function act(
           investor.token,
         );
       } else {
-        const decimals = (await snapshot()).fund.decimals;
         signature = await mintTo(
           payer,
           payer,
           m.fund.mint,
           investor.token,
-          ALLOCATION * 10n ** BigInt(decimals),
+          ALLOCATION * 10n ** BigInt(before.fund.decimals),
         );
       }
     } catch (error) {
+      if (error instanceof Unconfirmed)
+        return {
+          ok: false,
+          unconfirmed: true,
+          message:
+            "Sent, but the transaction could not be confirmed. Press Refresh to see whether it landed before acting again.",
+          signature: error.signature,
+          transaction: transactionLink(error.signature),
+          state: await reread(),
+        } satisfies ActionResult;
       if (!(error instanceof RpcFailure)) throw error;
-      return rejection(action, error, !current.credential, await snapshot());
+      return rejection(action, error, !current.credential, await reread());
     }
 
     // The transaction has committed. Nothing below may report it as failed:
@@ -326,7 +354,7 @@ export function act(
   });
   pending = run.catch(() => undefined);
   if (requestId) {
-    outcomes.set(requestId, run);
+    outcomes.set(requestId, { action, id, result: run });
     // Keep the map bounded; Map iterates oldest first.
     if (outcomes.size > REMEMBERED) outcomes.delete(outcomes.keys().next().value!);
   }
@@ -338,7 +366,7 @@ function rejection(
   action: "issue" | "activate" | "allocate",
   error: RpcFailure,
   noCredential: boolean,
-  state: DemoSnapshot,
+  state: DemoSnapshot | undefined,
 ): ActionResult {
   const logs = error.details?.logs ?? [];
   const code = (
@@ -350,18 +378,21 @@ function rejection(
   const base = { ok: false, logs: [error.message, ...logs], state };
 
   if (action === "activate" && fromGate && code !== undefined && CODES[code]) {
-    const { name, step } = CODES[code];
+    const { name } = CODES[code];
+    const step = locate(code);
+    const missing = code === 2 && noCredential;
     const decision: Decision =
-      step === "inputs_authentic"
-        ? { outcome: "unverified", code, name }
-        : { outcome: "denied", code, name };
+      step === null
+        ? { outcome: "unplaced", code, name }
+        : step === "inputs_authentic"
+          ? { outcome: "unverified", code, name, noCredential: missing }
+          : { outcome: "denied", code, name };
     return {
       ...base,
       decision,
-      message:
-        code === 2 && noCredential
-          ? "No credential on file. The account remains frozen."
-          : "Access refused. The account remains frozen.",
+      message: missing
+        ? "No credential on file. The account remains frozen."
+        : "Access refused. The account remains frozen.",
     };
   }
   // Token-2022 `TokenError::AccountFrozen`.

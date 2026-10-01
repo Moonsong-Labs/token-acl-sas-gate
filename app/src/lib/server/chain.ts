@@ -12,6 +12,7 @@ import {
   appendTransactionMessageInstructions,
   signTransactionMessageWithSigners,
   getBase64EncodedWireTransaction,
+  getSignatureFromTransaction,
   type Address,
   type Instruction,
   type KeyPairSigner,
@@ -61,14 +62,26 @@ export async function pda(
     })
   )[0];
 }
+const LOCAL_HOSTS = ["localhost", "127.0.0.1", "[::1]"];
+/** Whether an HTTP `Host` header names this machine, with an optional port. */
+export function isLocalHost(host: string) {
+  return /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(host);
+}
+/** `value` as a URL, if it is plain HTTP to this machine; throws otherwise. */
+function localHttpUrl(value: string, what: string) {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error(`The demo requires a local ${what} URL.`);
+  }
+  if (url.protocol !== "http:" || !LOCAL_HOSTS.includes(url.hostname))
+    throw new Error(`The demo requires a local ${what} URL.`);
+  return url;
+}
 export function endpoint() {
   const value = process.env.DEMO_RPC_URL ?? "http://127.0.0.1:8899";
-  const url = new URL(value);
-  if (
-    url.protocol !== "http:" ||
-    !["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)
-  )
-    throw new Error("The demo requires a local surfnet RPC.");
+  localHttpUrl(value, "surfnet RPC");
   return value;
 }
 /**
@@ -76,14 +89,8 @@ export function endpoint() {
  * `/?t=<signature>`. Local HTTP only, like the RPC endpoint.
  */
 export function studio() {
-  const value = process.env.DEMO_STUDIO_URL ?? "http://127.0.0.1:18488";
-  const url = new URL(value);
-  if (
-    url.protocol !== "http:" ||
-    !["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)
-  )
-    throw new Error("The demo requires a local Surfpool Studio URL.");
-  return url.origin;
+  return localHttpUrl(process.env.DEMO_STUDIO_URL ?? "http://127.0.0.1:18488", "Surfpool Studio")
+    .origin;
 }
 /** `undefined` when `DEMO_STUDIO_URL` is unusable: the link is never worth failing for. */
 export function transactionLink(signature: string): string | undefined {
@@ -94,6 +101,18 @@ export function transactionLink(signature: string): string | undefined {
     return undefined;
   }
 }
+/**
+ * A transaction was signed and possibly sent, but whether it landed is unknown:
+ * the send itself failed in transit, or its confirmation could not be read.
+ * Never a rejection: retrying could repeat a transaction that went through.
+ */
+export class Unconfirmed extends Error {
+  constructor(public signature: string) {
+    super(`Transaction ${signature} could not be confirmed.`);
+  }
+}
+/** How long to keep polling for confirmation, across transient RPC errors. */
+const CONFIRM_MS = 15_000;
 export class RpcFailure extends Error {
   constructor(
     message: string,
@@ -130,10 +149,22 @@ export async function account(a: Address) {
     ? { ...result.value, data: Buffer.from(result.value.data[0], "base64") }
     : null;
 }
+/**
+ * Sign, send and confirm. Throws `RpcFailure` only when the transaction was
+ * refused (in preflight, or on-chain with an error), `Unconfirmed` when it may
+ * have landed, and a plain `Error` when nothing was sent.
+ */
 export async function send(payer: KeyPairSigner, instructions: Instruction[]) {
-  const { value } = await rpc<{
-    value: { blockhash: string; lastValidBlockHeight: number };
-  }>("getLatestBlockhash", [{ commitment: "confirmed" }]);
+  let latest: { value: { blockhash: string; lastValidBlockHeight: number } };
+  try {
+    latest = await rpc("getLatestBlockhash", [{ commitment: "confirmed" }]);
+  } catch (error) {
+    // Nothing has been signed yet: this is a read failure, not a rejection.
+    throw new Error(
+      `Could not read a recent blockhash: ${error instanceof Error ? error.message : error}`,
+    );
+  }
+  const { value } = latest;
   const message = appendTransactionMessageInstructions(
     instructions,
     setTransactionMessageLifetimeUsingBlockhash(
@@ -148,15 +179,30 @@ export async function send(payer: KeyPairSigner, instructions: Instruction[]) {
     ),
   );
   const transaction = await signTransactionMessageWithSigners(message);
-  const signature = await rpc<string>("sendTransaction", [
-    getBase64EncodedWireTransaction(transaction),
-    { encoding: "base64", preflightCommitment: "confirmed" },
-  ]);
-  for (let attempt = 0; attempt < 100; attempt++) {
-    const result = await rpc<{
-      value: ({ err: unknown; confirmationStatus: string } | null)[];
-    }>("getSignatureStatuses", [[signature]]);
-    const status = result.value[0];
+  // Known before sending, so an uncertain outcome can still name the transaction.
+  const signature = getSignatureFromTransaction(transaction);
+  try {
+    await rpc<string>("sendTransaction", [
+      getBase64EncodedWireTransaction(transaction),
+      { encoding: "base64", preflightCommitment: "confirmed" },
+    ]);
+  } catch (error) {
+    // A JSON-RPC error here is the cluster refusing it in preflight: not sent.
+    if (error instanceof RpcFailure) throw error;
+    // Anything else (network, HTTP, timeout) may have happened after delivery.
+    throw new Unconfirmed(signature);
+  }
+  const deadline = Date.now() + CONFIRM_MS;
+  while (Date.now() < deadline) {
+    let status: { err: unknown; confirmationStatus: string } | null = null;
+    try {
+      const result = await rpc<{
+        value: ({ err: unknown; confirmationStatus: string } | null)[];
+      }>("getSignatureStatuses", [[signature]]);
+      status = result.value[0];
+    } catch {
+      // A failed status read says nothing about the transaction: poll again.
+    }
     if (status?.err)
       throw new RpcFailure(`Transaction ${signature} failed`, {
         err: status.err,
@@ -168,9 +214,7 @@ export async function send(payer: KeyPairSigner, instructions: Instruction[]) {
       return signature;
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
-  throw new Error(
-    `Confirmation timed out for ${signature}. Refresh before retrying.`,
-  );
+  throw new Unconfirmed(signature);
 }
 export async function addresses(
   mint: Address,

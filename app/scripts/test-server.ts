@@ -1,13 +1,59 @@
 // Own an isolated test surfnet and Next server; do not replace the presenter's session.
+//
+// The app reaches the surfnet through a small proxy on FAULT_PORT, so tests can
+// make chosen RPC calls fail (see `faults` below). Tests that read chain state
+// directly still use the surfnet itself on SURFNET.
 import { spawn, type ChildProcess } from "node:child_process";
+import { createServer } from "node:http";
+const SURFNET = "http://127.0.0.1:18999";
+const FAULT_PORT = 18998;
 const env = {
   ...process.env,
-  DEMO_RPC_URL: "http://127.0.0.1:18999",
+  DEMO_RPC_URL: `http://127.0.0.1:${FAULT_PORT}`,
   DEMO_SESSION_FILE: ".demo/e2e/session.json",
   // Links point at the test surfnet's Studio port. The suite checks the links,
   // not Studio itself, so Studio stays disabled below.
   DEMO_STUDIO_URL: "http://127.0.0.1:19488",
 };
+/**
+ * Armed by POST /__faults with `{ "rules": [...] }`; an empty list disarms. A
+ * rule fails the next `count` calls to `method` with a JSON-RPC error, starting
+ * only once a call to `after` has gone through, when set. Everything else is
+ * forwarded unchanged.
+ */
+type Rule = { method: string; count: number; after?: string; armed?: boolean };
+let faults: Rule[] = [];
+function startFaultProxy() {
+  const server = createServer(async (request, response) => {
+    let body = "";
+    for await (const chunk of request) body += chunk;
+    if (request.url === "/__faults") {
+      faults = (JSON.parse(body).rules as Rule[]).map((r) => ({ ...r, armed: !r.after }));
+      response.writeHead(204).end();
+      return;
+    }
+    const { id, method } = JSON.parse(body) as { id: unknown; method: string };
+    const rule = faults.find((r) => r.armed && r.method === method && r.count > 0);
+    if (rule) {
+      rule.count -= 1;
+      response.writeHead(200, { "Content-Type": "application/json" });
+      response.end(
+        JSON.stringify({ jsonrpc: "2.0", id, error: { code: -32000, message: `Injected fault: ${method}` } }),
+      );
+      return;
+    }
+    for (const r of faults) if (r.after === method) r.armed = true;
+    const upstream = await fetch(SURFNET, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body,
+    });
+    response.writeHead(upstream.status, { "Content-Type": "application/json" });
+    response.end(await upstream.text());
+  });
+  server.listen(FAULT_PORT, "127.0.0.1");
+  return server;
+}
 const children: ChildProcess[] = [];
 function start(command: string, args: string[]) {
   const child = spawn(command, args, { env, stdio: "inherit" });
@@ -46,7 +92,7 @@ async function main() {
   for (let i = 0; i < 100; i++) {
     if (surfnet.exitCode !== null) throw new Error("Test surfnet exited");
     try {
-      const r = await fetch(env.DEMO_RPC_URL, {
+      const r = await fetch(SURFNET, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "getHealth" }),
@@ -60,6 +106,7 @@ async function main() {
     await new Promise((r) => setTimeout(r, 200));
   }
   if (!ready) throw new Error("Test surfnet did not start");
+  startFaultProxy();
   const seed = start("node", ["--import", "tsx", "scripts/seed.ts"]);
   await new Promise<void>((resolve, reject) => {
     seed.on("error", reject);

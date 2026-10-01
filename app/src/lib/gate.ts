@@ -43,11 +43,18 @@ export const STEPS: { id: StepId; phase: Phase; label: string }[] = [
   { id: "claims_satisfied", phase: "policy", label: "Region accepted by this fund" },
 ];
 
-/** `GateError` custom codes (src/lib.rs), and the step each one fails. */
-export const CODES: Record<number, { name: string; step: StepId }> = {
+/**
+ * `GateError` custom codes (src/lib.rs), and the step each one fails. `null`
+ * means the code is raised in more than one place, so the code alone cannot
+ * say which checks ran: Malformed (3) comes from input authentication, but
+ * also from the token account's extensions after the schema check and from
+ * the claim after the expiry check; Context (14) concerns how the request
+ * arrived, not the credential.
+ */
+export const CODES: Record<number, { name: string; step: StepId | null }> = {
   1: { name: "Address", step: "inputs_authentic" },
   2: { name: "Owner", step: "inputs_authentic" },
-  3: { name: "Malformed", step: "inputs_authentic" },
+  3: { name: "Malformed", step: null },
   5: { name: "Blocked", step: "no_block" },
   6: { name: "Schema", step: "schema_accepted" },
   7: { name: "Subject", step: "subject_bound" },
@@ -57,8 +64,13 @@ export const CODES: Record<number, { name: string; step: StepId }> = {
   11: { name: "Invalidated", step: "not_invalidated" },
   12: { name: "Issuer", step: "credential_accepted" },
   13: { name: "Claim", step: "claims_satisfied" },
-  14: { name: "Context", step: "inputs_authentic" },
+  14: { name: "Context", step: null },
 };
+
+/** The step a gate code fails, or `null` when the code cannot place it. */
+export function locate(code: number): StepId | null {
+  return CODES[code]?.step ?? null;
+}
 
 /** The investor-facing headline for a refusal. */
 export const HEADLINES: Record<number, string> = {
@@ -81,8 +93,13 @@ export type Decision =
   | { outcome: "admitted" }
   /** The gate evaluated the policy and refused at one step. */
   | { outcome: "denied"; code: number; name: string }
-  /** The gate refused while authenticating inputs, before any policy step. */
-  | { outcome: "unverified"; code: number; name: string }
+  /**
+   * The gate refused while authenticating inputs, before any policy step.
+   * `noCredential` marks the common case: no attestation exists for the wallet.
+   */
+  | { outcome: "unverified"; code: number; name: string; noCredential?: boolean }
+  /** The gate refused with a code that does not identify one step. */
+  | { outcome: "unplaced"; code: number; name: string }
   /** Rejected without a gate code: Token ACL, Token-2022 or the runtime. */
   | { outcome: "rejected"; detail: string };
 
@@ -90,8 +107,8 @@ export type Decision =
 export function steps(decision: Decision): Step[] {
   const failed =
     decision.outcome === "denied" || decision.outcome === "unverified"
-      ? CODES[decision.code]?.step
-      : undefined;
+      ? locate(decision.code)
+      : null;
   const failedAt = failed ? STEPS.findIndex((s) => s.id === failed) : -1;
   return STEPS.map((step, index) => ({
     ...step,
