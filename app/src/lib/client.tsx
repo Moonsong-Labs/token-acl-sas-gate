@@ -2,14 +2,17 @@
 
 // The screens' view of the demo. Chain state lives on the local surfnet and is
 // read through `/api/demo`; nothing is simulated in the browser. One provider
-// holds the latest snapshot so moving between screens does not refetch or lose
-// the last action's result.
+// holds the latest snapshot and the last action's results across screens. The
+// snapshot is re-read when moving between screens and on Refresh, so a screen
+// catches up with network time (e.g. a credential that has since expired).
 
+import { usePathname } from "next/navigation";
 import {
   createContext,
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -42,6 +45,10 @@ export function DemoProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [results, setResults] = useState<Demo["results"]>({});
+  /** Bumped by every action, so a re-read it overtook is not applied. */
+  const actionsStarted = useRef(0);
+  const loaded = useRef(false);
+  const pathname = usePathname();
 
   const refresh = useCallback(async () => {
     setBusy(true);
@@ -58,12 +65,32 @@ export function DemoProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  // On navigation, re-read without disabling the screen or flashing an error:
+  // a failed read leaves the last snapshot, and Refresh shows any error. The
+  // result is dropped if an action started meanwhile, since that action's own
+  // result is newer.
+  const quietRefresh = useCallback(async () => {
+    const started = actionsStarted.current;
+    try {
+      const response = await fetch("/api/demo", { cache: "no-store" });
+      if (!response.ok) return;
+      const data = await response.json();
+      if (actionsStarted.current === started) setState(data);
+    } catch {}
+  }, []);
+
+  // The first load shows progress and errors; later screens re-read quietly.
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    if (loaded.current) void quietRefresh();
+    else {
+      loaded.current = true;
+      void refresh();
+    }
+  }, [pathname, refresh, quietRefresh]);
 
   const run = useCallback(
     async (action: Action, investor: InvestorId, options?: IssueOptions) => {
+      actionsStarted.current += 1;
       setBusy(true);
       // One ID per click. If the response is lost in transit, the same request
       // is sent once more under the same ID, and the server returns the

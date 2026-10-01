@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { RefreshButton } from "./RefreshButton";
 
 export type Role = "operator" | "authority" | "issuer" | "investor" | "none";
 
@@ -53,12 +54,15 @@ export function Chrome({
   roleLabel,
   subtitle = "Tokenized fund access",
   showBack = true,
+  showRefresh = true,
 }: {
   role?: Role;
   /** Overrides the role chip's text, e.g. to name the investor. */
   roleLabel?: string;
   subtitle?: string;
   showBack?: boolean;
+  /** Off for screens that read something other than the demo state. */
+  showRefresh?: boolean;
 }) {
   const style = role === "none" ? null : ROLE_STYLE[role];
 
@@ -95,6 +99,7 @@ export function Chrome({
           ← Overview
         </Link>
       )}
+      {showRefresh && <RefreshButton />}
       <Link
         className="chip mono"
         href="/status"

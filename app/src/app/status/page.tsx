@@ -34,7 +34,7 @@ export default function StatusScreen() {
   }, [load]);
 
   return (
-    <Screen subtitle="Network status">
+    <Screen subtitle="Network status" showRefresh={false}>
       <PageTitle
         eyebrow="Environment"
         title="Surfnet and programs"

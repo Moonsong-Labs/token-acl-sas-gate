@@ -298,7 +298,7 @@ export function act(
     } catch (error) {
       unread = ` The screen could not reload chain state (${
         error instanceof Error ? error.message : "unknown error"
-      }); refresh before acting again.`;
+      }). Press Refresh before acting again.`;
     }
     const after = state?.investors.find((i) => i.id === id);
     if (action === "activate" && after && !after.active)

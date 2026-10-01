@@ -168,16 +168,30 @@ test("UC1: no credential is refused, DE is admitted and receives, US is denied",
 
   // Admission is a past decision. Once Lena's credential lapses her account
   // stays active, and the screen must say so rather than imply compliance.
+  // Everything below navigates in-app, never reloading the page: the screens
+  // must catch up with the chain through Refresh and navigation alone.
+  await page.getByRole("link", { name: "Lena R.", exact: true }).click();
+  await expect(page.getByTestId("account-state")).toHaveText("Active");
+  await expect(page.getByTestId("lapsed-admission")).toHaveCount(0);
   const now = Number((await request.get("/api/status").then((r) => r.json())).now);
   await surfnet("surfnet_timeTravel", [{ absoluteTimestamp: (now + 300) * 1000 }]);
-  await page.goto("/investor/lena");
-  await expect(page.getByTestId("account-state")).toHaveText("Active");
+  await page.getByRole("button", { name: "Refresh" }).click();
   await expect(page.getByTestId("lapsed-admission")).toContainText(
     "Your credential has since expired",
   );
   await expect(page.getByText("was admitted when its credential met the fund")).toBeVisible();
   await expect(page.getByText(/meets the fund.s policy/)).toHaveCount(0);
   expect(await tokenState(state.investors[0].token)).toBe(1);
+
+  // Moving between screens re-reads state: a mint made outside this page shows
+  // up on the operator screen reached through an in-app link.
+  const outside = await request.post("/api/demo", {
+    headers: { Origin: "http://127.0.0.1:3300" },
+    data: { action: "allocate", investor: "lena" },
+  });
+  expect((await outside.json()).ok).toBe(true);
+  await page.getByRole("link", { name: "Receive MERID" }).click();
+  await expect(page.getByText("100,000 MERID")).toBeVisible();
 
   const paths = ["/", "/operator", "/authority", "/issuer", "/investor/lena", "/investor/mark", "/status"];
   for (const width of [320, 360, 390]) {
