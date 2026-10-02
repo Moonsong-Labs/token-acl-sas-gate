@@ -97,6 +97,12 @@ for the surfnet suite. To run an individual Cargo command with the same tools,
 use `mise exec -- cargo ...`. Update tool versions in `mise.toml` and rerun
 installation, setup, and both gates together when upgrading the environment.
 
+CI (`.github/workflows/ci.yml`) runs the same gates in parallel jobs: the
+pre-commit checks, and the SBF build with the surfnet suite. It also typechecks
+and builds the web demo in `app/`, then runs its Playwright suite against the
+gate from that SBF build. CI does not replace running both gates locally
+before landing.
+
 ## Commit subjects
 
 Use Conventional Commits:

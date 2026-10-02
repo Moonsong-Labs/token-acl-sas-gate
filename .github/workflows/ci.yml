@@ -11,24 +11,70 @@ concurrency:
 
 # The repository default is write. These gates only read the checkout, and they
 # run build scripts and Git hooks from an unreviewed branch, so the job token is
-# narrowed here rather than left to inherit.
+# narrowed here rather than left to inherit. No job needs more: artifacts passed
+# between jobs of the same run do not use this token.
 permissions:
   contents: read
 
 env:
   CARGO_TERM_COLOR: always
+  # Incremental artifacts never get reused on a fresh runner, and they inflate
+  # the cached target directories toward the repository's cache quota.
+  CARGO_INCREMENTAL: "0"
+
+# Together, the `rust` and `sbf` jobs run exactly what `mise run verify` runs
+# locally: the pre-push stage is the pre-commit hooks plus the integration hook.
+# They are split so formatting, Clippy and host test failures surface without
+# waiting for the SBF toolchain, and so the two halves run in parallel. If a
+# hook is added to .pre-commit-config.yaml at the pre-push stage only, add it to
+# the `sbf` job too.
+#
+# Actions are pinned by commit, and mise by release, so a change to the CI
+# environment is a reviewable diff like the Rust and SBF pins in mise.toml.
+# Each checkout skips persisting credentials: nothing runs Git against the
+# remote afterwards.
 
 jobs:
-  gates:
+  rust:
+    name: Rust (format, Clippy, host tests)
     # mise.toml pins Agave assets for linux-x64 and macos-arm64 only.
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - uses: jdx/mise-action@c37c93293d6b742fc901e1406b8f764f6fb19dac # v2.4.4
+        with:
+          version: 2026.9.12
+          cache: true
+
+      # Keyed per job: each job leaves a different target directory behind, and
+      # a shared key would let whichever finishes first decide what is cached.
+      - name: Cache cargo
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: ${{ runner.os }}-cargo-rust-${{ hashFiles('Cargo.lock', 'mise.toml') }}
+          restore-keys: ${{ runner.os }}-cargo-rust-
+
+      # The pre-commit stage: rustfmt, strict Clippy, and both host test
+      # configurations. None of it needs the SBF platform-tools, so this job
+      # skips `mise run setup`.
+      - run: mise run check
+
+  sbf:
+    name: SBF build and surfnet integration
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      # Actions are pinned by commit, and mise by release, so a change to the CI
-      # environment is a reviewable diff like the Rust and SBF pins in mise.toml.
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
-          # Nothing here runs Git against the remote after the checkout.
           persist-credentials: false
 
       - uses: jdx/mise-action@c37c93293d6b742fc901e1406b8f764f6fb19dac # v2.4.4
@@ -45,15 +91,136 @@ jobs:
             ~/.cargo/git/db
             ~/.cache/solana
             target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock', 'mise.toml') }}
-          restore-keys: ${{ runner.os }}-cargo-
+          key: ${{ runner.os }}-cargo-sbf-${{ hashFiles('Cargo.lock', 'mise.toml') }}
+          restore-keys: ${{ runner.os }}-cargo-sbf-
 
       # Installs the pinned SBF platform-tools. Also installs git hooks, which
       # CI does not use but which keeps this identical to a local checkout.
       - run: mise run setup
 
-      # The pre-push stage is a superset of the pre-commit one: formatting,
-      # Clippy, both host test configurations, the SBF build, and the surfnet
-      # integration suite. The suite needs no network — SAS and Token ACL are
-      # deployed from the pinned binaries in tests/fixtures/programs.
-      - run: mise run verify
+      # The integration harness rebuilds the program itself, so this build is
+      # not what the suite tests. It exists to hand the deployable artifact to
+      # the browser test, and to report a compile failure as such.
+      - run: mise run build
+
+      # Only the program binary: target/deploy also holds a generated keypair.
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: doors-of-durin-so
+          path: target/deploy/doors_of_durin.so
+          if-no-files-found: error
+          retention-days: 7
+
+      # The suite needs no network: SAS and Token ACL are deployed from the
+      # pinned binaries in tests/fixtures/programs.
+      - run: mise run integration
+
+  app:
+    name: Web (typecheck, production build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # app/ inherits the repo-root mise.toml, so mise would otherwise install
+      # Rust and Agave here too. The web jobs need only the tools app/mise.toml
+      # pins, which the setup step installs.
+      MISE_TASK_RUN_AUTO_INSTALL: "false"
+      MISE_EXEC_AUTO_INSTALL: "false"
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - uses: jdx/mise-action@c37c93293d6b742fc901e1406b8f764f6fb19dac # v2.4.4
+        with:
+          version: 2026.9.12
+          cache: true
+          working_directory: app
+          install_args: node ubi:txtx/surfpool
+
+      - name: Cache npm downloads
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-npm-${{ hashFiles('app/package-lock.json') }}
+          restore-keys: ${{ runner.os }}-npm-
+
+      - run: mise run deps
+      - run: mise run typecheck
+      - run: mise run build
+
+  e2e:
+    name: Web (Playwright against surfnet)
+    # Seeding deploys the SBF-built gate, so this waits for the `sbf` job's
+    # artifact rather than installing the Rust and SBF toolchains a third time.
+    needs: sbf
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # See the `app` job.
+      MISE_TASK_RUN_AUTO_INSTALL: "false"
+      MISE_EXEC_AUTO_INSTALL: "false"
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - uses: jdx/mise-action@c37c93293d6b742fc901e1406b8f764f6fb19dac # v2.4.4
+        with:
+          version: 2026.9.12
+          cache: true
+          working_directory: app
+          install_args: node ubi:txtx/surfpool
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: doors-of-durin-so
+          path: target/deploy
+
+      - name: Cache npm downloads
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-npm-${{ hashFiles('app/package-lock.json') }}
+          restore-keys: ${{ runner.os }}-npm-
+
+      - run: mise run deps
+
+      # Browser builds are tied to the Playwright release, not to the lockfile.
+      - name: Read the Playwright version
+        id: playwright
+        run: echo "version=$(mise exec -- node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ steps.playwright.outputs.version }}
+
+      # Runs on a cache hit too: the browser download is then skipped, but the
+      # system libraries Chromium needs are never cached and come from apt.
+      - run: mise exec -- npx playwright install --with-deps chromium
+
+      # Builds the production app, then starts its own offline surfnet and
+      # server on fixed ports; see app/scripts/test-server.ts.
+      - run: mise run e2e
+
+      # Traces and screenshots, plus the surfnet log. Uploaded on success too,
+      # since the suite's screenshots show what was tested.
+      - name: Upload test results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: playwright-results
+          path: |
+            app/test-results/
+            app/.surfpool/logs/
+          # .surfpool is a dot directory, which upload-artifact skips by default.
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 7
