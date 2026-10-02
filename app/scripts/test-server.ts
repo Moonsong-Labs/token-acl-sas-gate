@@ -17,11 +17,20 @@ const env = {
 };
 /**
  * Armed by POST /__faults with `{ "rules": [...] }`; an empty list disarms. A
- * rule fails the next `count` calls to `method` with a JSON-RPC error, starting
- * only once a call to `after` has gone through, when set. Everything else is
+ * rule fails the next `count` calls to `method` with a JSON-RPC error (`code`,
+ * default -32000), starting only once a call to `after` has gone through, when
+ * set. With `deliver`, the call is forwarded to the surfnet first and the error
+ * is returned anyway, like a failure on the way back. Everything else is
  * forwarded unchanged.
  */
-type Rule = { method: string; count: number; after?: string; armed?: boolean };
+type Rule = {
+  method: string;
+  count: number;
+  after?: string;
+  code?: number;
+  deliver?: boolean;
+  armed?: boolean;
+};
 let faults: Rule[] = [];
 function startFaultProxy() {
   const server = createServer(async (request, response) => {
@@ -36,9 +45,15 @@ function startFaultProxy() {
     const rule = faults.find((r) => r.armed && r.method === method && r.count > 0);
     if (rule) {
       rule.count -= 1;
+      if (rule.deliver)
+        await fetch(SURFNET, { method: "POST", headers: { "Content-Type": "application/json" }, body });
       response.writeHead(200, { "Content-Type": "application/json" });
       response.end(
-        JSON.stringify({ jsonrpc: "2.0", id, error: { code: -32000, message: `Injected fault: ${method}` } }),
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id,
+          error: { code: rule.code ?? -32000, message: `Injected fault: ${method}` },
+        }),
       );
       return;
     }

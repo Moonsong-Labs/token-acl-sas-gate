@@ -117,10 +117,27 @@ export class RpcFailure extends Error {
   constructor(
     message: string,
     public details: { err?: unknown; logs?: string[] } = {},
+    /** The JSON-RPC error code, when the failure came from an error response. */
+    public code?: number,
   ) {
     super(message);
   }
 }
+/**
+ * JSON-RPC error codes with which a node refuses a transaction without
+ * broadcasting it (Solana's RPC custom errors, plus malformed requests). Any
+ * other error from `sendTransaction`, e.g. an internal one, can come after the
+ * transaction was accepted, so it is not proof that nothing was sent.
+ */
+const REFUSED = new Set([
+  -32002, // SendTransactionPreflightFailure: simulation failed; logs attached
+  -32003, // TransactionSignatureVerificationFailure
+  -32006, // TransactionPrecompileVerificationFailure
+  -32013, // TransactionSignatureLenMismatch
+  -32015, // UnsupportedTransactionVersion
+  -32600, // Invalid request
+  -32602, // Invalid params: the transaction could not be decoded
+]);
 export async function rpc<T>(
   method: string,
   params: unknown[] = [],
@@ -134,7 +151,8 @@ export async function rpc<T>(
   });
   if (!response.ok) throw new Error(`Surfnet HTTP ${response.status}`);
   const body = await response.json();
-  if (body.error) throw new RpcFailure(body.error.message, body.error.data);
+  if (body.error)
+    throw new RpcFailure(body.error.message, body.error.data, body.error.code);
   return body.result as T;
 }
 export async function account(a: Address) {
@@ -151,8 +169,9 @@ export async function account(a: Address) {
 }
 /**
  * Sign, send and confirm. Throws `RpcFailure` only when the transaction was
- * refused (in preflight, or on-chain with an error), `Unconfirmed` when it may
- * have landed, and a plain `Error` when nothing was sent.
+ * refused (with a refusal code before broadcasting, or on-chain with an
+ * error), `Unconfirmed` when it may have landed but cannot be confirmed, and a
+ * plain `Error` when nothing was signed.
  */
 export async function send(payer: KeyPairSigner, instructions: Instruction[]) {
   let latest: { value: { blockhash: string; lastValidBlockHeight: number } };
@@ -187,10 +206,11 @@ export async function send(payer: KeyPairSigner, instructions: Instruction[]) {
       { encoding: "base64", preflightCommitment: "confirmed" },
     ]);
   } catch (error) {
-    // A JSON-RPC error here is the cluster refusing it in preflight: not sent.
-    if (error instanceof RpcFailure) throw error;
-    // Anything else (network, HTTP, timeout) may have happened after delivery.
-    throw new Unconfirmed(signature);
+    // Only a refusal code proves nothing was sent. Anything else (another
+    // JSON-RPC error, network, HTTP, timeout) may have happened after
+    // delivery: confirm the outcome below instead of assuming one.
+    if (error instanceof RpcFailure && error.code !== undefined && REFUSED.has(error.code))
+      throw error;
   }
   const deadline = Date.now() + CONFIRM_MS;
   while (Date.now() < deadline) {

@@ -10,7 +10,9 @@ const ORIGIN = { Origin: "http://127.0.0.1:3300" };
 /** The app's error banner; Next.js adds its own empty role="alert" route announcer. */
 const banner = (page: Page) => page.locator('[role="alert"]:not(#__next-route-announcer__)');
 
-async function faults(rules: { method: string; count: number; after?: string }[]) {
+async function faults(
+  rules: { method: string; count: number; after?: string; code?: number; deliver?: boolean }[],
+) {
   const response = await fetch("http://127.0.0.1:18998/__faults", {
     method: "POST",
     body: JSON.stringify({ rules }),
@@ -76,6 +78,39 @@ test("an allocation whose confirmation cannot be read is reported as unconfirmed
   await page.getByRole("button", { name: "Refresh" }).click();
   await expect(page.getByText(`${(before + 25_000).toLocaleString("en-GB")} MERID`)).toBeVisible();
   expect(await balance(request, "lena")).toBe(before + 25_000);
+});
+
+// An error from sendTransaction is only a refusal when its code says so
+// (preflight failure, bad signature, ...). An internal error may come after
+// the node accepted the transaction, so the outcome must be confirmed instead.
+test("an internal error after sending is confirmed by polling, not reported as rejected", async ({
+  page,
+  request,
+}) => {
+  await ready(request);
+  const before = await balance(request, "lena");
+  await page.goto("/operator");
+  await faults([{ method: "sendTransaction", count: 1, code: -32603, deliver: true }]);
+  await page.getByRole("button", { name: "Allocate 25,000" }).first().click();
+  await expect(page.getByRole("status")).toContainText("25,000 MERID received");
+  await expect(page.getByText("Transaction rejected")).toHaveCount(0);
+  expect(await balance(request, "lena")).toBe(before + 25_000);
+});
+
+test("an internal error with nothing delivered is reported as unconfirmed, not rejected", async ({
+  page,
+  request,
+}) => {
+  await ready(request);
+  const before = await balance(request, "lena");
+  await page.goto("/operator");
+  await faults([{ method: "sendTransaction", count: 1, code: -32603 }]);
+  await page.getByRole("button", { name: "Allocate 25,000" }).first().click();
+  const status = page.getByRole("status");
+  await expect(status).toContainText("could not be confirmed", { timeout: 30_000 });
+  await expect(status.getByRole("link", { name: /View transaction/ })).toHaveCount(1);
+  await expect(page.getByText("Transaction rejected")).toHaveCount(0);
+  expect(await balance(request, "lena")).toBe(before);
 });
 
 test("a gate denial is still shown when reading state after it fails", async ({ page, request }) => {

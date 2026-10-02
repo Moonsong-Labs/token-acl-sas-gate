@@ -166,9 +166,11 @@ fail chosen RPC calls. The tests seed a separate session under `.demo/e2e`.
   scrolls horizontally at phone width, that the API exposes no signing keys, and
   that it rejects unsupported actions and foreign origins.
 - `tests/resilience.spec.ts` uses the proxy to check how outcomes are reported
-  when the RPC misbehaves: a transaction whose confirmation cannot be read is
-  reported as unconfirmed with its signature, never as rejected; a gate denial
-  survives a failed read after it; and errors do not linger.
+  when the RPC misbehaves: an error on sending is only a rejection when its
+  code says the node refused the transaction; otherwise, as when its
+  confirmation cannot be read, the outcome is confirmed by polling or reported
+  as unconfirmed with its signature, never as rejected. A gate denial survives
+  a failed read after it, and errors do not linger.
 - `tests/units.spec.ts` checks the pure helpers without a browser.
 
 Test services stop when the suite ends. The regular demo session is preserved.
