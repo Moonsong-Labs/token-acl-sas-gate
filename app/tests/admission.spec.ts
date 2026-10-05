@@ -55,7 +55,7 @@ async function issue(page: Page, who: "lena" | "mark", validity = "year") {
   await expectTransactionLink(page, true);
 }
 
-test("UC1: no credential is refused, DE is admitted and receives, US is denied", async ({
+test("UC1 and UC2: admission, credential lifecycle, sponsor freeze and block precedence", async ({
   page,
   request,
 }) => {
@@ -221,7 +221,91 @@ test("UC1: no credential is refused, DE is admitted and receives, US is denied",
   await expect(page.getByText("125,000")).toBeVisible();
   await page.unroute("**/api/demo");
 
-  const paths = ["/", "/operator", "/authority", "/issuer", "/investor/lena", "/investor/mark", "/status"];
+  // UC2: expiry did not freeze Lena. The sponsor now enforces it.
+  const compliance = async () => {
+    await page.goto("/compliance");
+
+  };
+  await compliance();
+  await page.getByRole("button", { name: "Freeze account", exact: true }).first().click();
+  await expect(page.getByRole("status").first()).toContainText("Sponsor freeze confirmed");
+  await page.goto("/investor/lena");
+  await expect(page.getByTestId("account-state")).toHaveText("Frozen");
+  await expect(page.getByText("125,000")).toBeVisible();
+  await page.getByRole("button", { name: "Request access" }).click();
+  await expect(page.getByRole("status")).toContainText("Expired · 9");
+
+  const renew = async (verified = "today") => {
+    await page.goto("/issuer");
+    await page.getByLabel("KYC completed").selectOption(verified);
+    await page.getByRole("button", { name: "Renew credential", exact: true }).click();
+    await expect(page.getByRole("status")).toContainText("Credential renewed and confirmed");
+  };
+  await renew("two-years");
+  await page.goto("/investor/lena");
+  await page.getByRole("button", { name: "Request access" }).click();
+  await expect(page.getByRole("status")).toContainText("Freshness · 10");
+  await renew();
+  await page.goto("/investor/lena");
+  await expect(page.getByTestId("account-state")).toHaveText("Frozen");
+  await page.getByRole("button", { name: "Request access" }).click();
+  await expect(page.getByTestId("account-state")).toHaveText("Active");
+
+  // Native SAS closure does not freeze an already admitted account.
+  await page.goto("/issuer");
+  await page.getByRole("button", { name: "Revoke credential" }).click();
+  await expect(page.getByRole("status")).toContainText("Credential revoked");
+  await page.goto("/investor/lena");
+  await expect(page.getByTestId("account-state")).toHaveText("Active");
+  await expect(page.getByTestId("lapsed-admission")).toContainText("no longer on file");
+  await compliance();
+  await page.getByRole("button", { name: "Freeze account", exact: true }).first().click();
+  await expect(page.getByRole("status").first()).toContainText("Sponsor freeze confirmed");
+  await page.goto("/investor/lena");
+  await page.getByRole("button", { name: "Request access" }).click();
+  await expect(page.getByRole("status")).toContainText("Owner · 2");
+  // No replacement exists until the issuer writes one.
+  await issue(page, "lena");
+  await page.goto("/investor/lena");
+  await expect(page.getByTestId("account-state")).toHaveText("Frozen");
+  await page.getByRole("button", { name: "Request access" }).click();
+  await expect(page.getByTestId("account-state")).toHaveText("Active");
+
+  await compliance();
+  await page.getByRole("button", { name: "Freeze account", exact: true }).first().click();
+  await expect(page.getByRole("status").first()).toContainText("Sponsor freeze confirmed");
+  await page.getByRole("button", { name: "Add wallet block" }).first().click();
+  await expect(page.getByRole("status").first()).toContainText("Explicit wallet block added");
+  await page.getByRole("button", { name: "Invalidate wallet", exact: true }).first().click();
+  await expect(page.getByRole("status").first()).toContainText("Wallet invalidated");
+  await renew();
+  await page.goto("/investor/lena");
+  await page.getByRole("button", { name: "Request access" }).click();
+  await expect(page.getByRole("status")).toContainText("Blocked · 5");
+  await compliance();
+  await page.getByRole("button", { name: "Remove wallet block" }).first().click();
+  await expect(page.getByRole("status").first()).toContainText("Explicit wallet block removed");
+  await page.goto("/investor/lena");
+  await page.getByRole("button", { name: "Request access" }).click();
+  await expect(page.getByRole("status")).toContainText("Invalidated · 11");
+  await compliance();
+  await page.getByRole("button", { name: "Clear wallet invalidation" }).first().click();
+  await expect(page.getByRole("status").first()).toContainText("Wallet invalidation cleared");
+  await page.goto("/investor/lena");
+  await page.getByRole("button", { name: "Request access" }).click();
+  await expect(page.getByTestId("account-state")).toHaveText("Active");
+  await page.reload();
+  await expect(page.getByTestId("access-timeline")).toContainText("Access withdrawn by sponsor freeze");
+  await expect(page.getByTestId("access-timeline")).toContainText("Credential revoked");
+  await expect(page.getByTestId("access-timeline")).toContainText("Credential renewed");
+  await expect(page.getByTestId("access-timeline")).toContainText("Access granted");
+  const restored = await (await request.get("/api/demo")).json();
+  expect(restored.investors[0].balance).toBe(125_000);
+  expect(await tokenState(restored.investors[0].token)).toBe(1);
+  expect(restored.investors[0].walletStatus).toEqual({ blocked: false, invalidated: false });
+  await page.screenshot({ path: "test-results/uc2-restored.png", fullPage: true });
+
+  const paths = ["/compliance", "/", "/operator", "/authority", "/issuer", "/investor/lena", "/investor/mark", "/status"];
   for (const width of [320, 360, 390]) {
     await page.setViewportSize({ width, height: 844 });
     for (const path of paths) {
@@ -237,7 +321,7 @@ test("UC1: no credential is refused, DE is admitted and receives, US is denied",
 
   const unsupported = await request.post("/api/demo", {
     headers: { Origin: "http://127.0.0.1:3300" },
-    data: { action: "freeze", investor: "lena" },
+    data: { action: "freeze-all", investor: "lena" },
   });
   expect(unsupported.status()).toBe(400);
   const crossOrigin = await request.post("/api/demo", {

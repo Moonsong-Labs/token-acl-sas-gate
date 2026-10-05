@@ -103,9 +103,16 @@ wrong-credential, and out-of-region evidence. The integration suite exercises it
 with real SAS issuance and Token ACL thaws on a local surfnet, and the web demo
 in [`app/`](app/README.md) presents the same flow.
 
-**UC2 and later use cases are not implemented.** These include the credential
-lifecycle demo (sponsor freeze, renewal, and re-admission), screening-feed
-blocks, multi-issuer trust tiers, and the second-mint policy fixture. The schema
+**UC2, the credential lifecycle, is implemented.** The demo supports native SAS
+revocation, atomic close-and-reissue renewal, sponsor freeze of a supplied token
+account, wallet block and invalidation controls, and re-admission. A recent
+transaction timeline records withdrawal and restoration from chain history.
+Integration tests prove that revocation alone permits transfers, sponsor freeze
+stops them while retaining the balance, and valid renewal restores admission
+only after explicit blocks and wallet invalidation are cleared.
+
+**Later use cases are not implemented.** These include screening-feed
+integration, multi-issuer trust tiers, and the second-mint policy fixture. The schema
 is a test fixture; no external compliance provider integration or cluster
 deployment is configured. See [docs/USE_CASES.md](docs/USE_CASES.md) and
 [docs/SCOPE.md](docs/SCOPE.md) for the planned scope.
@@ -141,13 +148,12 @@ in [app/README.md](app/README.md).
 ### Mockups
 
 The demo screens follow a set of UI mockups covering the full MVP arc. Screens 1
-to 4 and 6 are built; screens 5, 7, 8 and 9 belong to later use cases and
-describe planned behavior, not the current build.
+to 8 are built. Screen 9, the second fund, describes planned behavior.
 
 ![Mockup of the screen flow, from fund setup to admission, denial, and the later compliance loop](docs/images/mockups/00-screen-flow.png)
 
-*Mockup: screen flow. The lower row (withdrawal, compliance actions, and the
-access timeline) and the two-fund screen are later use cases.*
+*Mockup: screen flow. Withdrawal, compliance actions, and the access timeline
+are part of UC2. The two-fund screen is a later use case.*
 
 <details>
 <summary>All mockups</summary>
@@ -157,12 +163,12 @@ access timeline) and the two-fund screen are later use cases.*
 | ![Mockup: overview by role](docs/images/mockups/00-overview.png) | Overview | Built |
 | ![Mockup: fund setup](docs/images/mockups/01-fund-setup.png) | 1 · Fund setup | Built |
 | ![Mockup: account locked](docs/images/mockups/02-account-locked.png) | 2 · Account locked | Built |
-| ![Mockup: issue and withdraw credential](docs/images/mockups/03-issue-and-withdraw-credential.png) | 3 · Issue & withdraw credential | Issuance built; withdrawal is later |
+| ![Mockup: issue and withdraw credential](docs/images/mockups/03-issue-and-withdraw-credential.png) | 3 · Issue & withdraw credential | Built |
 | ![Mockup: access granted](docs/images/mockups/04-access-granted.png) | 4 · Access granted | Built |
-| ![Mockup: access withdrawn](docs/images/mockups/05-access-withdrawn.png) | 5 · Access withdrawn | Later (UC2) |
+| ![Mockup: access withdrawn](docs/images/mockups/05-access-withdrawn.png) | 5 · Access withdrawn | Built |
 | ![Mockup: access denied](docs/images/mockups/06-access-denied.png) | 6 · Access denied | Built |
-| ![Mockup: compliance actions](docs/images/mockups/07-compliance-actions.png) | 7 · Compliance actions | Later (UC2, UC3) |
-| ![Mockup: access timeline](docs/images/mockups/08-access-timeline.png) | 8 · Access timeline | Later (UC2) |
+| ![Mockup: compliance actions](docs/images/mockups/07-compliance-actions.png) | 7 · Compliance actions | Built for UC2; feed integration later |
+| ![Mockup: access timeline](docs/images/mockups/08-access-timeline.png) | 8 · Access timeline | Built |
 | ![Mockup: two funds, one credential](docs/images/mockups/09-two-funds-one-credential.png) | 9 · Two funds, one credential | Later (UC5) |
 
 </details>
@@ -176,7 +182,7 @@ access timeline) and the two-fund screen are later use cases.*
 | [docs/USE_CASES.md](docs/USE_CASES.md) | Business use cases UC1 to UC6, the reference model, the MVP demo arc, and the data policy |
 | [docs/IMPLEMENTATION.md](docs/IMPLEMENTATION.md) | Toolchain pins, discovery-list design, the gate predicate, test matrix, build order, and risks |
 | [docs/SAS_SPIKE.md](docs/SAS_SPIKE.md) | SAS findings: account layouts, expiry and revocation semantics, authenticity checks, and the subject-binding decision |
-| [app/README.md](app/README.md) | The UC1 web demo: parties, local setup, screens, presentation script, and browser tests |
+| [app/README.md](app/README.md) | The UC1 and UC2 web demo: parties, local setup, screens, presentation script, and browser tests |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Prerequisites, required checks, Git hooks, review and landing, and commit conventions |
 
 ## Prerequisites
@@ -279,7 +285,7 @@ setup and admission flow are in `tests/support/admission.rs`.
 - `tests/support/`: harness — surfnet lifecycle, cheatcodes, outcome
   attribution, pinned program IDs, SAS instruction builders, and UC1 setup.
 - `tests/fixtures/programs/`: pinned SAS and Token ACL binaries.
-- `app/`: the UC1 demo website, with its own `mise.toml`; see
+- `app/`: the admission and lifecycle demo website, with its own `mise.toml`; see
   [app/README.md](app/README.md).
 - `docs/`: scope, use cases, implementation notes, SAS findings, the UC1
   protocol reference, and the README images.

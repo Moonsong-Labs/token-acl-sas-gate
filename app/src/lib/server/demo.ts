@@ -11,6 +11,10 @@ import {
   ledgerNow,
   transactionLink,
   RpcFailure,
+  revoke,
+  freeze,
+  setStatus,
+  history,
   GATE,
   endpoint,
   rpc,
@@ -23,6 +27,7 @@ import {
   decodeMintConfig,
   decodePolicy,
   decodeSchema,
+  decodeStatus,
   decodeTokenAccount,
 } from "./accounts";
 import { CODES, type Decision } from "../gate";
@@ -104,9 +109,12 @@ export async function snapshot() {
         investor.wallet,
         investor.token,
       );
-      const [tokenRaw, evidenceRaw] = await Promise.all([
+      const [tokenRaw, evidenceRaw, walletRaw, tokenStatusRaw, timeline] = await Promise.all([
         account(investor.token),
         account(a.evidence),
+        account(a.walletStatus),
+        account(a.tokenStatus),
+        history(investor.token, a.evidence, a.walletStatus),
       ]);
       const token = decodeTokenAccount(tokenRaw);
       if (token.mint !== m.fund.mint || token.owner !== investor.wallet)
@@ -119,6 +127,9 @@ export async function snapshot() {
         wallet: investor.wallet,
         token: investor.token,
         active: token.active,
+        walletStatus: decodeStatus(walletRaw),
+        tokenStatus: decodeStatus(tokenStatusRaw),
+        timeline,
         immutableOwner: token.immutableOwner,
         balance: formatUnits(token.amount, mint.decimals),
         credential: evidence && {
@@ -225,8 +236,14 @@ let pending: Promise<unknown> = Promise.resolve();
 const outcomes = new Map<string, Promise<ActionResult>>();
 const REMEMBERED = 500;
 
+export const ACTIONS = [
+  "issue", "renew", "revoke", "freeze", "block", "unblock",
+  "invalidate", "validate", "activate", "allocate",
+] as const;
+export type Action = (typeof ACTIONS)[number];
+
 export function act(
-  action: "issue" | "activate" | "allocate",
+  action: Action,
   id: InvestorId,
   options: IssueOptions = { verified: "today", validity: "year" },
   requestId?: string,
@@ -239,10 +256,14 @@ export function act(
     const current = (await snapshot()).investors.find((i) => i.id === id)!;
     if (action === "issue" && current.credential)
       throw new Error(
-        "This investor already has a credential. Renewal arrives with the lifecycle screens; reseed to start over.",
+        "This investor already has a credential. Use Renew credential to replace it.",
       );
     if (action === "activate" && current.active)
       throw new Error("This account is already active.");
+    if (action === "revoke" && !current.credential)
+      throw new Error("No credential to revoke.");
+    if (action === "freeze" && !current.active)
+      throw new Error("This account is already frozen.");
     const payer = await signer(m.payerSeed);
 
     // Only the send is classified: a chain or gate rejection is an outcome to
@@ -251,7 +272,7 @@ export function act(
     // can never be reported as a rejection.
     let signature: string;
     try {
-      if (action === "issue") {
+      if (action === "issue" || action === "renew") {
         const now = await ledgerNow();
         signature = await issue(
           payer,
@@ -262,6 +283,19 @@ export function act(
           investor.jurisdiction,
           now - BigInt(VERIFIED[options.verified]),
           now + BigInt(VALIDITY[options.validity]),
+          action === "renew" && Boolean(current.credential),
+        );
+      } else if (action === "revoke") {
+        signature = await revoke(
+          payer, await signer(m.issuerSeed), m.credential, current.credential!.address,
+        );
+      } else if (action === "freeze") {
+        signature = await freeze(payer, m.fund.mint, investor.token);
+      } else if (["block", "unblock", "invalidate", "validate"].includes(action)) {
+        signature = await setStatus(
+          payer, m.fund.mint, investor.wallet,
+          action === "block" ? true : action === "unblock" ? false : current.walletStatus.blocked,
+          action === "invalidate" ? true : action === "validate" ? false : current.walletStatus.invalidated,
         );
       } else if (action === "activate") {
         signature = await activate(
@@ -310,14 +344,23 @@ export function act(
         transaction,
         state,
       } satisfies ActionResult;
+    const messages: Partial<Record<Action, string>> = {
+      renew: "Credential renewed and confirmed. Request access to re-admit a frozen account.",
+      revoke: "Credential revoked. An active account stays active until the sponsor freezes it.",
+      freeze: "Access withdrawn. Sponsor freeze confirmed; the balance is retained.",
+      block: "Explicit wallet block added. Renewal cannot remove it.",
+      unblock: "Explicit wallet block removed. Request access to re-check the credential.",
+      invalidate: "Wallet invalidated. This status survives renewal until the operator clears it.",
+      validate: "Wallet invalidation cleared. Explicit blocks are preserved.",
+    };
     return {
       ok: true,
       message:
-        (action === "issue"
+        (messages[action] ?? (action === "issue"
           ? "Credential issued and confirmed."
           : action === "activate"
             ? "Access granted. Admission confirmed on-chain."
-            : `${ALLOCATION.toLocaleString("en-GB")} ${m.fund.symbol} received.`) + unread,
+            : `${ALLOCATION.toLocaleString("en-GB")} ${m.fund.symbol} received.`)) + unread,
       decision: action === "activate" ? { outcome: "admitted" } : undefined,
       signature,
       transaction,
@@ -335,7 +378,7 @@ export function act(
 
 /** Turn a failed send into an outcome the screens can explain. */
 function rejection(
-  action: "issue" | "activate" | "allocate",
+  action: Action,
   error: RpcFailure,
   noCredential: boolean,
   state: DemoSnapshot,

@@ -101,7 +101,7 @@ export default function Overview() {
       >
         <section style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           <div>
-            <div className="lbl">Live demo · use case 1</div>
+            <div className="lbl">Live demo · use cases 1 and 2</div>
             <h1
               className="serif"
               style={{ fontSize: 33, fontWeight: 700, lineHeight: 1.1, letterSpacing: "-.01em" }}
@@ -150,8 +150,8 @@ export default function Overview() {
                 lineHeight: 1.45,
               }}
             >
-              Withdrawal and restoration, the compliance hold and the second fund are the next
-              use cases; their screens are not in this build.
+              Revoke or renew a credential, freeze the supplied account, and request admission
+              again. Explicit blocks survive renewal. The second fund is a later use case.
             </p>
           </div>
 
@@ -177,6 +177,7 @@ export default function Overview() {
             <Nav n={1} href="/operator">
               Fund setup
             </Nav>
+            <Nav n={7} href="/compliance">Compliance actions</Nav>
           </Persona>
 
           <Persona
@@ -197,7 +198,7 @@ export default function Overview() {
             blurb={`${issuer} confirms an investor's KYC and issues the credential, as an authorized issuer of ${registry}.`}
           >
             <Nav n={3} href="/issuer">
-              Issue credential
+              Issue, renew or revoke credential
             </Nav>
           </Persona>
 

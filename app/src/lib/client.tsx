@@ -18,6 +18,7 @@ import {
 } from "react";
 import type {
   ActionResult,
+  Action,
   DemoSnapshot,
   InvestorId,
   IssueOptions,
@@ -25,7 +26,6 @@ import type {
 
 export type { ActionResult, DemoSnapshot, InvestorId, IssueOptions };
 export type Investor = DemoSnapshot["investors"][number];
-type Action = "issue" | "activate" | "allocate";
 
 interface Demo {
   state: DemoSnapshot | null;
