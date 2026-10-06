@@ -27,6 +27,10 @@ run = "npm run surfnet"
 description = "Deploy pinned programs and create a fresh UC1 demo session"
 run = "npm run seed"
 
+[tasks.screen]
+description = "Simulated screening feed: hit, delist or lift an investor's wallet block"
+run = "npm run screen --"
+
 [tasks.dev]
 description = "Run the Next dev server"
 run = "npm run dev"

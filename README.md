@@ -111,8 +111,17 @@ Integration tests prove that revocation alone permits transfers, sponsor freeze
 stops them while retaining the balance, and valid renewal restores admission
 only after compliance holds and wallet invalidation are cleared.
 
-**Later use cases are not implemented.** These include screening-feed
-integration, multi-issuer trust tiers, and the second-mint policy fixture. The schema
+**UC3, screening blocks, is implemented as a simulated feed.** The gate's
+authorized status instruction adds and removes an explicit wallet block, checked
+before credential validity and immune to renewal. `mise run screen` (from `app/`)
+plays the feed: a sanctions hit blocks the wallet and freezes the supplied token
+account in one transaction, a delisting writes nothing and only flags a review,
+and only an authorized lift clears the block. An integration test covers the
+authorized and unauthorized paths. Real screening-feed integration is not
+implemented.
+
+**UC4 and UC5 are not implemented.** These are multi-issuer trust tiers and the
+second-mint policy fixture. The schema
 is a test fixture; no external compliance provider integration or cluster
 deployment is configured. See [docs/USE_CASES.md](docs/USE_CASES.md) and
 [docs/SCOPE.md](docs/SCOPE.md) for the planned scope.
@@ -167,7 +176,7 @@ are part of UC2. The two-fund screen is a later use case.*
 | ![Mockup: access granted](docs/images/mockups/04-access-granted.png) | 4 · Access granted | Built |
 | ![Mockup: access withdrawn](docs/images/mockups/05-access-withdrawn.png) | 5 · Access withdrawn | Built |
 | ![Mockup: access denied](docs/images/mockups/06-access-denied.png) | 6 · Access denied | Built |
-| ![Mockup: compliance actions](docs/images/mockups/07-compliance-actions.png) | 7 · Compliance actions | Built for UC2; feed integration later |
+| ![Mockup: compliance actions](docs/images/mockups/07-compliance-actions.png) | 7 · Compliance actions | Built for UC2; the UC3 feed is a CLI, real feed integration later |
 | ![Mockup: access timeline](docs/images/mockups/08-access-timeline.png) | 8 · Access timeline | Built |
 | ![Mockup: two funds, one credential](docs/images/mockups/09-two-funds-one-credential.png) | 9 · Two funds, one credential | Later (UC5) |
 

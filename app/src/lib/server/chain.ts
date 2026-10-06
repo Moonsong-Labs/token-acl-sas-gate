@@ -273,19 +273,29 @@ export async function revoke(
   return send(payer, [await closeEvidence(payer, issuer, credential, evidence)]);
 }
 
+export async function freezeIx(payer: KeyPairSigner, mint: Address, token: Address) {
+  return ix(TOKEN_ACL, [5], [signed(payer), ro(mint), rw(token),
+    ro(await pda(TOKEN_ACL, "MINT_CONFIG", key(mint))), ro(TOKEN)]);
+}
+
 export async function freeze(payer: KeyPairSigner, mint: Address, token: Address) {
-  return send(payer, [ix(TOKEN_ACL, [5], [signed(payer), ro(mint), rw(token),
-    ro(await pda(TOKEN_ACL, "MINT_CONFIG", key(mint))), ro(TOKEN)])]);
+  return send(payer, [await freezeIx(payer, mint, token)]);
+}
+
+export async function setStatusIx(
+  payer: KeyPairSigner, mint: Address, subject: Address, blocked: boolean, invalidated: boolean,
+) {
+  return ix(GATE, [2, Number(blocked), Number(invalidated)], [
+    signed(payer, true), signed(payer), ro(mint),
+    ro(await pda(TOKEN_ACL, "MINT_CONFIG", key(mint))), ro(subject),
+    rw(await pda(GATE, "status", key(mint), key(subject))), ro(SYSTEM),
+  ]);
 }
 
 export async function setStatus(
   payer: KeyPairSigner, mint: Address, subject: Address, blocked: boolean, invalidated: boolean,
 ) {
-  return send(payer, [ix(GATE, [2, Number(blocked), Number(invalidated)], [
-    signed(payer, true), signed(payer), ro(mint),
-    ro(await pda(TOKEN_ACL, "MINT_CONFIG", key(mint))), ro(subject),
-    rw(await pda(GATE, "status", key(mint), key(subject))), ro(SYSTEM),
-  ])]);
+  return send(payer, [await setStatusIx(payer, mint, subject, blocked, invalidated)]);
 }
 
 /** Recent confirmed lifecycle transactions, reconstructed from RPC history. */
