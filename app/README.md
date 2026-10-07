@@ -82,6 +82,17 @@ The demo uses `http://127.0.0.1:8899` for the RPC by default. To use another loc
 `DEMO_RPC_URL` in `app/.env.local` and start surfnet on that port. Both seeding and
 the server read this variable. Remote networks are outside this demo's scope.
 
+An allocation whose submission or confirmation is uncertain stays locked to its
+saved signature. Refresh reads balances; an unchanged balance does not permit a
+replacement. The next allocation request checks that signature in transaction
+history and only proceeds after confirmation, confirmed failure, or expiration
+at the finalized block height. RPC failures keep the allocation locked. This
+record lives beside the demo session and survives server restarts; keep it while
+the session is in use.
+
+Retries using the same request ID must describe the same action, investor and
+issuance options. Omitted issuance options normalize to today and one year.
+
 ## Screens
 
 | Route | Screen | Role |

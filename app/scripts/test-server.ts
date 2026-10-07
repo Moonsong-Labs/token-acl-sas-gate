@@ -29,13 +29,22 @@ type Rule = {
   after?: string;
   code?: number;
   deliver?: boolean;
+  hold?: boolean;
+  result?: unknown;
   armed?: boolean;
 };
 let faults: Rule[] = [];
+let held: string[] = [];
 function startFaultProxy() {
   const server = createServer(async (request, response) => {
     let body = "";
     for await (const chunk of request) body += chunk;
+    if (request.url === "/__release") {
+      for (const pending of held) await fetch(SURFNET, { method: "POST", headers: { "Content-Type": "application/json" }, body: pending });
+      held = [];
+      response.writeHead(204).end();
+      return;
+    }
     if (request.url === "/__faults") {
       faults = (JSON.parse(body).rules as Rule[]).map((r) => ({ ...r, armed: !r.after }));
       response.writeHead(204).end();
@@ -45,6 +54,7 @@ function startFaultProxy() {
     const rule = faults.find((r) => r.armed && r.method === method && r.count > 0);
     if (rule) {
       rule.count -= 1;
+      if (rule.hold) held.push(body);
       if (rule.deliver)
         await fetch(SURFNET, { method: "POST", headers: { "Content-Type": "application/json" }, body });
       response.writeHead(200, { "Content-Type": "application/json" });
@@ -52,7 +62,9 @@ function startFaultProxy() {
         JSON.stringify({
           jsonrpc: "2.0",
           id,
-          error: { code: rule.code ?? -32000, message: `Injected fault: ${method}` },
+          ...(rule.result !== undefined
+            ? { result: rule.result }
+            : { error: { code: rule.code ?? -32000, message: `Injected fault: ${method}` } }),
         }),
       );
       return;

@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile, unlink } from "node:fs/promises";
 import { resolve } from "node:path";
 import { type Address } from "@solana/kit";
 import {
@@ -11,6 +11,7 @@ import {
   ledgerNow,
   transactionLink,
   RpcFailure,
+  type Submitted,
   Unconfirmed,
   GATE,
   endpoint,
@@ -231,7 +232,7 @@ let pending: Promise<unknown> = Promise.resolve();
  */
 const outcomes = new Map<
   string,
-  { action: string; id: InvestorId; result: Promise<ActionResult> }
+  { action: string; id: InvestorId; options: string; result: Promise<ActionResult> }
 >();
 const REMEMBERED = 500;
 
@@ -241,17 +242,25 @@ export function act(
   options: IssueOptions = { verified: "today", validity: "year" },
   requestId?: string,
 ): Promise<ActionResult> {
+  const normalizedOptions = action === "issue"
+    ? JSON.stringify({ verified: options.verified, validity: options.validity })
+    : "";
   const seen = requestId ? outcomes.get(requestId) : undefined;
   if (seen) {
     // A retry is the same request: replaying another action's outcome under it
     // would be wrong, so a reused ID is refused.
-    if (seen.action !== action || seen.id !== id)
+    if (seen.action !== action || seen.id !== id || seen.options !== normalizedOptions)
       throw new Error("This request ID was already used for a different action.");
     return seen.result;
   }
   const run = pending.then(async () => {
     const m = await manifest();
     const investor = m.investors[id];
+    const allocationFile = `${manifestPath()}.${investor.token}.allocation.json`;
+    if (action === "allocate") {
+      const unresolved = await unresolvedAllocation(allocationFile);
+      if (unresolved) return uncertainAllocation(unresolved, await reread());
+    }
     const before = await snapshot();
     const current = before.investors.find((i) => i.id === id)!;
     if (action === "issue" && current.credential)
@@ -298,6 +307,7 @@ export function act(
           m.fund.mint,
           investor.token,
           ALLOCATION * 10n ** BigInt(before.fund.decimals),
+          (tx) => writeFile(allocationFile, JSON.stringify(tx), { mode: 0o600 }),
         );
       }
     } catch (error) {
@@ -306,14 +316,19 @@ export function act(
           ok: false,
           unconfirmed: true,
           message:
-            "Sent, but the transaction could not be confirmed. Press Refresh to see whether it landed before acting again.",
+            action === "allocate"
+              ? "Sent, but the transaction could not be confirmed. Press Refresh to check chain state. Further allocations are blocked until the saved transaction resolves."
+              : "Sent, but the transaction could not be confirmed. Press Refresh to see whether it landed before acting again.",
           signature: error.signature,
           transaction: transactionLink(error.signature),
           state: await reread(),
         } satisfies ActionResult;
       if (!(error instanceof RpcFailure)) throw error;
+      if (action === "allocate") await clearAllocation(allocationFile);
       return rejection(action, error, !current.credential, await reread());
     }
+
+    if (action === "allocate") await clearAllocation(allocationFile).catch(() => undefined);
 
     // The transaction has committed. Nothing below may report it as failed:
     // the caller would retry, and a retry repeats a committed action. A failed
@@ -354,11 +369,46 @@ export function act(
   });
   pending = run.catch(() => undefined);
   if (requestId) {
-    outcomes.set(requestId, { action, id, result: run });
+    outcomes.set(requestId, { action, id, options: normalizedOptions, result: run });
     // Keep the map bounded; Map iterates oldest first.
     if (outcomes.size > REMEMBERED) outcomes.delete(outcomes.keys().next().value!);
   }
   return run;
+}
+
+/** Saved before broadcasting; survives page refreshes and server restarts. */
+async function clearAllocation(path: string) {
+  await unlink(path).catch((error: NodeJS.ErrnoException) => {
+    if (error.code !== "ENOENT") throw error;
+  });
+}
+async function unresolvedAllocation(path: string): Promise<Submitted | undefined> {
+  let saved: Submitted;
+  try {
+    saved = JSON.parse(await readFile(path, "utf8"));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+    throw error;
+  }
+  const height = await rpc<number>("getBlockHeight", [{ commitment: "finalized" }]);
+  // Read history after height: a transaction can land during the height read.
+  const { value } = await rpc<{ value: ({ err: unknown; confirmationStatus: string } | null)[] }>(
+    "getSignatureStatuses", [[saved.signature], { searchTransactionHistory: true }],
+  );
+  const status = value[0];
+  if ((status && ["confirmed", "finalized"].includes(status.confirmationStatus)) ||
+      (!status && height > saved.lastValidBlockHeight)) {
+    await clearAllocation(path);
+    return;
+  }
+  return saved;
+}
+function uncertainAllocation(saved: Submitted, state?: DemoSnapshot): ActionResult {
+  return {
+    ok: false, unconfirmed: true, signature: saved.signature,
+    transaction: transactionLink(saved.signature), state,
+    message: "The previous allocation is still unresolved. Further allocations are blocked until its signature confirms, fails, or expires. Press Refresh to check chain state.",
+  };
 }
 
 /** Turn a failed send into an outcome the screens can explain. */

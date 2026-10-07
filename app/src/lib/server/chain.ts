@@ -167,13 +167,18 @@ export async function account(a: Address) {
     ? { ...result.value, data: Buffer.from(result.value.data[0], "base64") }
     : null;
 }
+export type Submitted = { signature: string; lastValidBlockHeight: number };
 /**
  * Sign, send and confirm. Throws `RpcFailure` only when the transaction was
  * refused (with a refusal code before broadcasting, or on-chain with an
  * error), `Unconfirmed` when it may have landed but cannot be confirmed, and a
  * plain `Error` when nothing was signed.
  */
-export async function send(payer: KeyPairSigner, instructions: Instruction[]) {
+export async function send(
+  payer: KeyPairSigner,
+  instructions: Instruction[],
+  beforeSend?: (tx: Submitted) => Promise<void>,
+) {
   let latest: { value: { blockhash: string; lastValidBlockHeight: number } };
   try {
     latest = await rpc("getLatestBlockhash", [{ commitment: "confirmed" }]);
@@ -200,6 +205,7 @@ export async function send(payer: KeyPairSigner, instructions: Instruction[]) {
   const transaction = await signTransactionMessageWithSigners(message);
   // Known before sending, so an uncertain outcome can still name the transaction.
   const signature = getSignatureFromTransaction(transaction);
+  await beforeSend?.({ signature, lastValidBlockHeight: value.lastValidBlockHeight });
   try {
     await rpc<string>("sendTransaction", [
       getBase64EncodedWireTransaction(transaction),
@@ -330,6 +336,7 @@ export async function mintTo(
   mint: Address,
   token: Address,
   amount: bigint,
+  beforeSend?: (tx: Submitted) => Promise<void>,
 ) {
   return send(payer, [
     ix(TOKEN, bytes([7], num(amount)), [
@@ -337,7 +344,7 @@ export async function mintTo(
       rw(token),
       signed(mintAuthority),
     ]),
-  ]);
+  ], beforeSend);
 }
 export async function activate(
   payer: KeyPairSigner,
