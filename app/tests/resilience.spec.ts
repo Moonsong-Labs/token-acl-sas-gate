@@ -163,6 +163,37 @@ test("pending delivery blocks a replacement allocation after Refresh", async ({ 
   expect(await balance(request, "lena")).toBe(before + 50_000);
 });
 
+test("a processed error keeps an allocation locked, not treated as a rejection", async ({
+  page,
+  request,
+}) => {
+  await ready(request);
+  const before = await balance(request, "lena");
+  await page.goto("/operator");
+  // The allocation lands, but every status read comes back failed-yet-"processed".
+  // A processed status can still roll back, so it must not count as a definitive
+  // failure that clears the lock and invites a double-minting retry.
+  const processed = {
+    value: [{ err: { InstructionError: [0, { Custom: 0 }] }, confirmationStatus: "processed" }],
+  };
+  await faults([{ method: "getSignatureStatuses", count: 100_000, result: processed }]);
+  await page.getByRole("button", { name: "Allocate 25,000" }).first().click();
+  const status = page.getByRole("status");
+  await expect(status).toContainText("could not be confirmed", { timeout: 30_000 });
+  await expect(page.getByText("Transaction rejected")).toHaveCount(0);
+  // The lock holds: a replacement is refused while the signature is only processed.
+  await page.getByRole("button", { name: "Allocate 25,000" }).first().click();
+  await expect(status).toContainText("previous allocation is still unresolved");
+  // Once real confirmation is readable, the lock clears and allocation resumes.
+  await faults([]);
+  await expect.poll(() => balance(request, "lena")).toBe(before + 25_000);
+  await expect.poll(async () => {
+    const next = await post(request, { action: "allocate", investor: "lena", requestId: crypto.randomUUID() });
+    return (await next.json()).ok;
+  }).toBe(true);
+  expect(await balance(request, "lena")).toBe(before + 50_000);
+});
+
 test("issuance retries compare normalized credential options", async ({ request }) => {
   const requestId = crypto.randomUUID();
   // A refusal is also remembered; this works whether Mark already has evidence.

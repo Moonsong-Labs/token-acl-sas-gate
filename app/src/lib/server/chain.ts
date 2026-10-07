@@ -230,15 +230,16 @@ export async function send(
     } catch {
       // A failed status read says nothing about the transaction: poll again.
     }
-    if (status?.err)
-      throw new RpcFailure(`Transaction ${signature} failed`, {
-        err: status.err,
-      });
-    if (
-      status &&
-      ["confirmed", "finalized"].includes(status.confirmationStatus)
-    )
+    // Only a confirmed/finalized status is a definitive outcome. A "processed"
+    // status (even with an error) can still be rolled back, so treating it as a
+    // failure would clear the allocation lock too early; keep polling instead.
+    if (status && ["confirmed", "finalized"].includes(status.confirmationStatus)) {
+      if (status.err)
+        throw new RpcFailure(`Transaction ${signature} failed`, {
+          err: status.err,
+        });
       return signature;
+    }
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
   throw new Unconfirmed(signature);
