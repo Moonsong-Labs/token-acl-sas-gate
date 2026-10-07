@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { isLocalHost } from "@/lib/server/chain";
 import {
   act,
+  ACTIONS,
   snapshot,
   INVESTORS,
   VERIFIED,
@@ -19,7 +20,6 @@ function local(request: NextRequest) {
   if (request.method === "POST" && origin !== `http://${host}`)
     throw new Error("Use the local demo page to submit actions.");
 }
-const ACTIONS = ["issue", "activate", "allocate"] as const;
 /** A UUID, generated per click by the screens. */
 const REQUEST_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const isOneOf = <T extends string>(values: readonly T[], value: unknown): value is T =>

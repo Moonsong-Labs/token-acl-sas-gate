@@ -8,6 +8,13 @@ import { GATE, SAS, TOKEN, TOKEN_ACL, readKey } from "./chain";
 
 type Raw = { owner: Address; data: Buffer } | null;
 
+export function decodeStatus(raw: Raw) {
+  if (!raw || raw.owner !== GATE || raw.data.length !== 3 || raw.data[0] !== 2 ||
+      raw.data[1] > 1 || raw.data[2] > 1)
+    throw new Error("Investor status unavailable. Run mise run seed.");
+  return { blocked: raw.data[1] === 1, invalidated: raw.data[2] === 1 };
+}
+
 /** Token-2022 TLV extension types used here. */
 const DEFAULT_ACCOUNT_STATE = 6;
 const IMMUTABLE_OWNER = 7;

@@ -957,3 +957,150 @@ async fn uc1_governance_follows_authority_rotation_and_blocks_take_precedence() 
     );
     gate_denied(&f.send_thaw(), GateError::Claim);
 }
+
+/// UC2 exercises transfers, enforcement on a supplied account, and restoration
+/// with real SAS issuance/closure and real Token ACL instructions.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "builds the program with cargo build-sbf; run via `mise run integration`"]
+async fn uc2_revocation_freeze_renewal_and_block_precedence() {
+    use doors_of_durin::GateError;
+    use spl_token_2022_interface::instruction as token;
+    use support::admission::{Admission, TOKEN};
+    let mut f = Admission::start().await;
+    let payer = f.harness.payer().pubkey();
+    let supplied = f.token;
+    f.send_thaw().assert_success();
+    let other = f.new_token(true);
+    f.harness
+        .send(&[f.status(&other, None, &payer)], &[f.harness.payer()])
+        .assert_success();
+    f.token = other;
+    f.send_thaw().assert_success();
+    f.token = supplied;
+    f.harness
+        .send(
+            &[token::mint_to(&TOKEN, &f.mint, &supplied, &payer, &[], 100).unwrap()],
+            &[f.harness.payer()],
+        )
+        .assert_success();
+    let transfer = |amount| {
+        token::transfer_checked(
+            &TOKEN,
+            &supplied,
+            &f.mint,
+            &other,
+            &f.investor.pubkey(),
+            &[],
+            amount,
+            6,
+        )
+        .unwrap()
+    };
+    f.harness
+        .send(&[transfer(5)], &[f.harness.payer(), &f.investor])
+        .assert_success();
+    f.revoke();
+    // Native revocation alone does not invoke the gate on transfers.
+    let outcome = f
+        .harness
+        .send(&[transfer(10)], &[f.harness.payer(), &f.investor]);
+    outcome.assert_success();
+    assert!(outcome.compute_units_for(&support::ids::GATE).is_none());
+    assert_eq!(f.token_state(), 1);
+    f.freeze();
+    assert_eq!(f.token_state(), 2);
+    let before = f.harness.rpc().get_account(&supplied).unwrap();
+    assert_eq!(
+        u64::from_le_bytes(before.data[64..72].try_into().unwrap()),
+        85
+    );
+    let denied = f
+        .harness
+        .send(&[transfer(11)], &[f.harness.payer(), &f.investor]);
+    assert_eq!(
+        denied.error,
+        Some(TransactionError::InstructionError(
+            0,
+            InstructionError::Custom(17)
+        )),
+        "Token-2022 must reject the frozen source with AccountFrozen: {denied:?}"
+    );
+    assert!(!denied.reached(&support::ids::GATE));
+    assert_eq!(
+        f.harness.rpc().get_account(&supplied).unwrap().data,
+        before.data
+    );
+    assert_eq!(
+        f.harness.rpc().get_account(&other).unwrap().data[108],
+        1,
+        "freezing the supplied account does not freeze every account of its owner"
+    );
+    gate_denied(&f.send_thaw(), GateError::Owner);
+    assert_eq!(f.token_state(), 2);
+    f.issue("DE", f.now - 1, f.now + 172800);
+    assert_eq!(f.token_state(), 2, "renewal alone does not thaw");
+    f.send_thaw().assert_success();
+    f.harness
+        .send(&[transfer(12)], &[f.harness.payer(), &f.investor])
+        .assert_success();
+
+    f.freeze();
+    f.harness
+        .send(
+            &[f.status(&f.investor.pubkey(), Some([1, 0]), &payer)],
+            &[f.harness.payer()],
+        )
+        .assert_success();
+    f.revoke();
+    f.issue("DE", f.now, f.now + 259200);
+    gate_denied(&f.send_thaw(), GateError::Blocked);
+    assert_eq!(f.token_state(), 2);
+    gate_denied(
+        &f.harness.send(
+            &[f.status(&f.investor.pubkey(), Some([0, 0]), &f.investor.pubkey())],
+            &[f.harness.payer(), &f.investor],
+        ),
+        GateError::Unauthorized,
+    );
+    gate_denied(&f.send_thaw(), GateError::Blocked);
+    f.harness
+        .send(
+            &[f.status(&f.investor.pubkey(), Some([0, 0]), &payer)],
+            &[f.harness.payer()],
+        )
+        .assert_success();
+    f.send_thaw().assert_success();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "builds the program with cargo build-sbf; run via `mise run integration`"]
+async fn uc2_wallet_invalidation_survives_reissuance_until_authorized_clear() {
+    use doors_of_durin::GateError;
+    use support::admission::Admission;
+    let f = Admission::start().await;
+    let payer = f.harness.payer().pubkey();
+    f.send_thaw().assert_success();
+    f.harness
+        .send(
+            &[f.status(&f.investor.pubkey(), Some([0, 1]), &payer)],
+            &[f.harness.payer()],
+        )
+        .assert_success();
+    assert_eq!(
+        f.token_state(),
+        1,
+        "adapter invalidation is not an automatic freeze"
+    );
+    f.freeze();
+    f.revoke();
+    f.issue("DE", f.now, f.now + 172800);
+    gate_denied(&f.send_thaw(), GateError::Invalidated);
+    assert_eq!(f.token_state(), 2);
+    f.harness
+        .send(
+            &[f.status(&f.investor.pubkey(), Some([0, 0]), &payer)],
+            &[f.harness.payer()],
+        )
+        .assert_success();
+    f.send_thaw().assert_success();
+}

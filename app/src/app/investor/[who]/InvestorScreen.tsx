@@ -103,7 +103,11 @@ export function InvestorScreen({ who }: { who: InvestorId }) {
   // Admission is a decision the gate made when access was requested; it does not
   // re-check an active account. So an active account can hold a credential that
   // has since expired, or none at all, and the screen must not imply otherwise.
-  const lapsed = active && (!credential || expired);
+  const stale = credential && fund.policy.maxAge !== 0 &&
+    (credential.verifiedAt > state.now || state.now - credential.verifiedAt >= fund.policy.maxAge);
+  const restricted = investor.walletStatus.blocked || investor.walletStatus.invalidated ||
+    investor.tokenStatus.blocked || investor.tokenStatus.invalidated;
+  const lapsed = active && (!credential || expired || stale || restricted);
 
   const tone = active
     ? { color: "var(--ok)", bg: "var(--okbg)", border: "#BFDDC9", wash: "#EEF6F0" }
@@ -113,7 +117,7 @@ export function InvestorScreen({ who }: { who: InvestorId }) {
     <Screen role="investor" roleLabel={`Investor · ${investor.name}`}>
       <PageTitle
         eyebrow="Your account"
-        title={active ? "Admitted — account active" : "Frozen — not yet admitted"}
+        title={active ? "Admitted — account active" : investor.balance > 0 ? "Access withdrawn — account frozen" : "Frozen — not yet admitted"}
         aside={
           <nav aria-label="Investor" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             {state.investors.map((i) => (
@@ -189,7 +193,8 @@ export function InvestorScreen({ who }: { who: InvestorId }) {
                 </>
               ) : (
                 <>
-                  Your account exists but can&rsquo;t receive <strong>{fund.symbol}</strong> yet.
+                  Your account is frozen and cannot send or receive <strong>{fund.symbol}</strong>.
+                  Any existing balance remains in the account.
                   This fund admits investors by checking a credential they already hold —
                   there&rsquo;s no eligible-investor spreadsheet to be added to.
                 </>
@@ -226,7 +231,7 @@ export function InvestorScreen({ who }: { who: InvestorId }) {
                 }}
               >
                 <strong>
-                  {credential ? "Your credential has since expired." : "Your credential is no longer on file."}
+                  {!credential ? "Your credential is no longer on file." : expired ? "Your credential has since expired." : stale ? "Your KYC no longer meets the freshness rule." : "Your account has a compliance hold or invalidation."}
                 </strong>{" "}
                 The gate checks a credential only when access is requested, so this does not freeze
                 the account on its own. It stays active until the fund&rsquo;s sponsor freezes it.
@@ -262,6 +267,7 @@ export function InvestorScreen({ who }: { who: InvestorId }) {
                   Get a credential
                 </Link>
               )}
+              <Link className="btn ghost" href="/compliance">Compliance actions</Link>
               {active && (
                 <Link className="btn ghost" href="/operator">
                   Receive {fund.symbol}
@@ -277,6 +283,22 @@ export function InvestorScreen({ who }: { who: InvestorId }) {
         </section>
 
         <section style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <div className="card" style={{ padding: 20 }}>
+            <h2 className="lbl">Access timeline</h2>
+            <p style={{ fontSize: 12, color: "var(--muted)", marginTop: 8 }}>Recent confirmed lifecycle transactions. Refused requests and passage of time have no transaction here.</p>
+            {investor.timelineUnavailable ? (
+              <p data-testid="timeline-unavailable" style={{ marginTop: 12, fontSize: 13, color: "var(--ink2)" }}>
+                Transaction history is unavailable. Current account state and compliance actions
+                remain available. Press Refresh to retry the timeline.
+              </p>
+            ) : <ol data-testid="access-timeline" style={{ paddingLeft: 20, fontSize: 13, lineHeight: 1.6 }}>
+              {investor.timeline.map((event) => <li key={event.signature}>
+                {event.message}<br />
+                <span style={{ color: "var(--muted)" }}>{event.time ? new Date(event.time * 1000).toLocaleString("en-GB") : `Slot ${event.slot}`}</span>
+                <TransactionLink href={event.transaction} />
+              </li>)}
+            </ol>}
+          </div>
           {decision &&
           (decision.outcome === "admitted" ||
             decision.outcome === "denied" ||
