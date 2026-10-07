@@ -150,7 +150,7 @@ export default function IssuerScreen() {
             {fund.name} requires KYC completed within the last{" "}
             {maxAge === 0 ? "— no limit" : formatDuration(maxAge)}, and a credential that has not
             expired. Dates are set from network time. Renewal replaces evidence atomically,
-            preserves operator blocks and invalidation, and does not thaw a frozen account.
+            preserves compliance holds and invalidation, and does not thaw a frozen account.
           </p>
 
           <div>

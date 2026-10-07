@@ -71,7 +71,7 @@ export async function manifest(): Promise<Manifest> {
 }
 
 /** Everything the screens show, read from chain state in one pass. */
-export async function snapshot() {
+export async function snapshot(includeHistory = true) {
   const m = await manifest();
   const gate = await account(GATE);
   if (!gate?.executable)
@@ -114,7 +114,11 @@ export async function snapshot() {
         account(a.evidence),
         account(a.walletStatus),
         account(a.tokenStatus),
-        history(investor.token, a.evidence, a.walletStatus),
+        includeHistory
+          ? history(investor.token, a.evidence, a.walletStatus)
+              .then((entries) => ({ entries, unavailable: false }))
+              .catch(() => ({ entries: [], unavailable: true }))
+          : { entries: [], unavailable: false },
       ]);
       const token = decodeTokenAccount(tokenRaw);
       if (token.mint !== m.fund.mint || token.owner !== investor.wallet)
@@ -129,7 +133,8 @@ export async function snapshot() {
         active: token.active,
         walletStatus: decodeStatus(walletRaw),
         tokenStatus: decodeStatus(tokenStatusRaw),
-        timeline,
+        timeline: timeline.entries,
+        timelineUnavailable: timeline.unavailable,
         immutableOwner: token.immutableOwner,
         balance: formatUnits(token.amount, mint.decimals),
         credential: evidence && {
@@ -253,7 +258,9 @@ export function act(
   const run = pending.then(async () => {
     const m = await manifest();
     const investor = m.investors[id];
-    const current = (await snapshot()).investors.find((i) => i.id === id)!;
+    // History is presentation data. Do not query it before submitting an action.
+    const before = await snapshot(false);
+    const current = before.investors.find((i) => i.id === id)!;
     if (action === "issue" && current.credential)
       throw new Error(
         "This investor already has a credential. Use Renew credential to replace it.",
@@ -307,7 +314,7 @@ export function act(
           investor.token,
         );
       } else {
-        const decimals = (await snapshot()).fund.decimals;
+        const decimals = before.fund.decimals;
         signature = await mintTo(
           payer,
           payer,
@@ -348,10 +355,10 @@ export function act(
       renew: "Credential renewed and confirmed. Request access to re-admit a frozen account.",
       revoke: "Credential revoked. An active account stays active until the sponsor freezes it.",
       freeze: "Access withdrawn. Sponsor freeze confirmed; the balance is retained.",
-      block: "Explicit wallet block added. Renewal cannot remove it.",
-      unblock: "Explicit wallet block removed. Request access to re-check the credential.",
+      block: "Compliance hold added. Renewal cannot remove it.",
+      unblock: "Compliance hold removed. Request access to re-check the credential.",
       invalidate: "Wallet invalidated. This status survives renewal until the operator clears it.",
-      validate: "Wallet invalidation cleared. Explicit blocks are preserved.",
+      validate: "Wallet invalidation cleared. Compliance holds are preserved.",
     };
     return {
       ok: true,
@@ -453,7 +460,7 @@ export async function status() {
   );
   let seeded = false;
   try {
-    await snapshot();
+    await snapshot(false);
     seeded = true;
   } catch {}
   return { endpoint: url, healthy, now, programs, seeded };

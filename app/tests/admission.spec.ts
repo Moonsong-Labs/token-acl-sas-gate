@@ -274,8 +274,8 @@ test("UC1 and UC2: admission, credential lifecycle, sponsor freeze and block pre
   await compliance();
   await page.getByRole("button", { name: "Freeze account", exact: true }).first().click();
   await expect(page.getByRole("status").first()).toContainText("Sponsor freeze confirmed");
-  await page.getByRole("button", { name: "Add wallet block" }).first().click();
-  await expect(page.getByRole("status").first()).toContainText("Explicit wallet block added");
+  await page.getByRole("button", { name: "Add compliance hold" }).first().click();
+  await expect(page.getByRole("status").first()).toContainText("Compliance hold added");
   await page.getByRole("button", { name: "Invalidate wallet", exact: true }).first().click();
   await expect(page.getByRole("status").first()).toContainText("Wallet invalidated");
   await renew();
@@ -283,8 +283,8 @@ test("UC1 and UC2: admission, credential lifecycle, sponsor freeze and block pre
   await page.getByRole("button", { name: "Request access" }).click();
   await expect(page.getByRole("status")).toContainText("Blocked · 5");
   await compliance();
-  await page.getByRole("button", { name: "Remove wallet block" }).first().click();
-  await expect(page.getByRole("status").first()).toContainText("Explicit wallet block removed");
+  await page.getByRole("button", { name: "Remove compliance hold" }).first().click();
+  await expect(page.getByRole("status").first()).toContainText("Compliance hold removed");
   await page.goto("/investor/lena");
   await page.getByRole("button", { name: "Request access" }).click();
   await expect(page.getByRole("status")).toContainText("Invalidated · 11");
@@ -330,3 +330,67 @@ test("UC1 and UC2: admission, credential lifecycle, sponsor freeze and block pre
   });
   expect(crossOrigin.status()).toBe(400);
 });
+
+for (const method of ["getSignaturesForAddress", "getTransaction"]) {
+  test(`UC2 enforcement remains available when ${method} fails`, async ({ page, request }) => {
+    const action = async (name: string) => {
+      const response = await request.post("/api/demo", {
+        headers: { Origin: "http://127.0.0.1:3300" },
+        data: { action: name, investor: "lena", requestId: crypto.randomUUID() },
+      });
+      expect(response.status()).toBe(200);
+      return response.json();
+    };
+    // Each case can run independently against the seeded real programs.
+    const original = await (await request.get("/api/demo")).json();
+    await action(original.investors[0].credential ? "renew" : "issue");
+    expect((await action("unblock")).ok).toBe(true);
+    expect((await action("validate")).ok).toBe(true);
+    const ready = await (await request.get("/api/demo")).json();
+    if (!ready.investors[0].active) expect((await action("activate")).ok).toBe(true);
+    const token = ready.investors[0].token;
+
+    await request.post("http://127.0.0.1:19001/fault", { data: { method } });
+    try {
+      await page.goto("/investor/lena");
+      await expect(page.getByTestId("account-state")).toHaveText("Active");
+      await expect(page.getByTestId("timeline-unavailable")).toBeVisible();
+      await expect(page.getByTestId("access-timeline")).toHaveCount(0);
+      const frozen = await action("freeze");
+      expect(frozen.ok).toBe(true);
+      expect(frozen.signature).toBeTruthy();
+      expect(frozen.state.investors[0].timelineUnavailable).toBe(true);
+      expect(await tokenState(token)).toBe(2);
+      const held = await action("block");
+      expect(held.ok).toBe(true);
+      expect(held.state.investors[0].walletStatus.blocked).toBe(true);
+      const revoked = await action("revoke");
+      expect(revoked.ok).toBe(true);
+      expect(revoked.state.investors[0].credential).toBeNull();
+      // The hold allows new evidence; it denies admission until lifted.
+      const issued = await action("issue");
+      expect(issued.ok).toBe(true);
+      expect(issued.state.investors[0].credential).not.toBeNull();
+      const denied = await action("activate");
+      expect(denied.ok).toBe(false);
+      expect(denied.decision.code).toBe(5);
+      expect(denied.state.investors[0].timelineUnavailable).toBe(true);
+      expect((await action("unblock")).ok).toBe(true);
+      const restored = await action("activate");
+      expect(restored.ok).toBe(true);
+      expect(await tokenState(token)).toBe(1);
+      await page.getByRole("button", { name: "Refresh" }).click();
+      await expect(page.getByTestId("timeline-unavailable")).toBeVisible();
+      const fault = await (await request.get("http://127.0.0.1:19001/fault")).json();
+      expect(fault.failures).toBeGreaterThan(0);
+      await page.screenshot({ path: `test-results/uc2-history-unavailable-${method}.png`, fullPage: true });
+    } finally {
+      await request.post("http://127.0.0.1:19001/fault", { data: { method: null } });
+    }
+    await page.getByRole("button", { name: "Refresh" }).click();
+    await expect(page.getByTestId("timeline-unavailable")).toHaveCount(0);
+    await expect(page.getByTestId("access-timeline")).toContainText("Access withdrawn by sponsor freeze");
+    await expect(page.getByTestId("access-timeline")).toContainText("Credential revoked");
+    await expect(page.getByTestId("access-timeline")).toContainText("Access granted");
+  });
+}

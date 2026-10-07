@@ -310,7 +310,7 @@ export async function history(token: Address, evidence: Address, walletStatus: A
       if (program === SAS && data[0] === 6 && target(4) === evidence) messages.push("Credential issued");
       if (program === TOKEN_ACL && data[0] === 5 && target(2) === token) messages.push("Access withdrawn by sponsor freeze");
       if (program === TOKEN_ACL && data[0] === 6 && target(2) === token) messages.push("Access granted");
-      if (program === GATE && data[0] === 2 && target(5) === walletStatus) messages.push(`Wallet status: block ${data[1] ? "on" : "off"}, invalidation ${data[2] ? "on" : "off"}`);
+      if (program === GATE && data[0] === 2 && target(5) === walletStatus) messages.push(`Wallet status: compliance hold ${data[1] ? "on" : "off"}, invalidation ${data[2] ? "on" : "off"}`);
     }
     if (!messages.length) return null;
     return { signature: s.signature, slot: s.slot, time: s.blockTime,

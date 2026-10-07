@@ -16,7 +16,8 @@ export default function Compliance() {
     <p style={{ marginBottom: 20, color: "var(--ink2)", lineHeight: 1.5 }}>
       Freeze only the token account shown for each investor. Expiry, revocation and status
       updates do not freeze an active account automatically. A frozen account retains its balance.
-      Wallet blocks and invalidation apply to admission under this fund's policy.
+      Compliance holds prevent permissionless re-admission under this fund's policy.
+      They permit credential issuance and renewal, and leave active accounts usable until frozen.
     </p>
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(330px, 100%), 1fr))", gap: 20 }}>
       {state.investors.map((investor) => {
@@ -25,14 +26,14 @@ export default function Compliance() {
           <h2>{investor.name}</h2>
           <p>{investor.active ? "Active" : "Frozen"} · {investor.balance.toLocaleString("en-GB")} {state.fund.symbol}</p>
           <p className="mono" style={{ fontSize: 12 }} title={investor.token}>Account {short(investor.token)}</p>
-          <p>Wallet block: {investor.walletStatus.blocked ? "On" : "Off"}<br />
+          <p>Wallet compliance hold: {investor.walletStatus.blocked ? "On" : "Off"}<br />
             Wallet invalidation: {investor.walletStatus.invalidated ? "On" : "Off"}<br />
-            Account block: {investor.tokenStatus.blocked ? "On" : "Off"}<br />
+            Account compliance hold: {investor.tokenStatus.blocked ? "On" : "Off"}<br />
             Account invalidation: {investor.tokenStatus.invalidated ? "On" : "Off"}</p>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             <button className="btn" disabled={busy || !investor.active} onClick={() => run("freeze", investor.id)}>Freeze account</button>
             <button className="btn ghost" disabled={busy} onClick={() => run(investor.walletStatus.blocked ? "unblock" : "block", investor.id)}>
-              {investor.walletStatus.blocked ? "Remove wallet block" : "Add wallet block"}</button>
+              {investor.walletStatus.blocked ? "Remove compliance hold" : "Add compliance hold"}</button>
             <button className="btn ghost" disabled={busy} onClick={() => run(investor.walletStatus.invalidated ? "validate" : "invalidate", investor.id)}>
               {investor.walletStatus.invalidated ? "Clear wallet invalidation" : "Invalidate wallet"}</button>
           </div>

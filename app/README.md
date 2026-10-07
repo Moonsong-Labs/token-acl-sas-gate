@@ -155,9 +155,9 @@ Continue after Lena has been admitted and allocated MERID:
 3. On `/investor/lena`, request access. The closed evidence fails authentication.
 4. On `/issuer`, issue replacement evidence. The account stays frozen until Lena
    requests access again. Valid evidence permits admission.
-5. Freeze Lena again, then click **Add wallet block**. Renew her credential on
+5. Freeze Lena again, then click **Add compliance hold**. Renew her credential on
    `/issuer`, then request access. The gate denies it with `Blocked · 5`.
-6. Remove the wallet block on `/compliance`, then request access. The gate admits
+6. Remove the compliance hold on `/compliance`, then request access. The gate admits
    the account if the evidence meets every other rule.
 
 For expiry, issue or renew with **Valid until** set to two minutes, wait for it
@@ -166,10 +166,14 @@ on the network clock, then freeze and request access. The gate returns
 
 **Invalidate wallet** publishes a separate operator status under this fund.
 It persists across reissuance. After reviewing replacement evidence, use
-**Clear wallet invalidation** before requesting admission. Removing a block
-preserves invalidation, and clearing invalidation preserves a block. The gate
+**Clear wallet invalidation** before requesting admission. Removing a compliance hold
+preserves invalidation, and clearing invalidation preserves a compliance hold. The gate
 returns `Invalidated · 11` when invalidation is the first failing status check.
-Native SAS closure and this wallet status are distinct revocation sources.
+A compliance hold prevents permissionless re-admission. It permits credential
+issuance and renewal, and leaves active accounts usable until explicitly frozen.
+The API action names `block` and `unblock`, the `blocked` state flag, and the
+on-chain `Blocked` error code retain their protocol names.
+Native SAS closure and wallet invalidation are distinct revocation sources.
 
 The investor's access timeline reconstructs recent confirmed lifecycle actions
 from RPC transaction history and links to Surfpool Studio. It survives page and
@@ -177,6 +181,9 @@ server reloads while the surfnet retains its history. It reads at most the most
 recent 30 signatures for each of the token, evidence and wallet status accounts,
 then examines the newest 30 unique successful transactions. It is not a complete
 audit log. Refused preflight requests and expiry have no confirmed transaction.
+If a history RPC read fails, the timeline shows an unavailable message. Current
+account reads and enforcement actions remain available. Actions do not read
+transaction history before submission. Refresh retries the optional timeline.
 No detection service or one-hour enforcement guarantee is provided.
 
 ## Verify
@@ -200,7 +207,11 @@ operator, authority, issuer and investor screens. It checks the seeded roles on-
 credential's authority, its single authorized signer, and each attestation's
 signer), the raw token states for both investors, that no screen scrolls horizontally at phone
 width, that the API exposes no signing keys, and that it rejects unsupported
-actions and foreign origins. Test services stop when the suite ends. The Rust
+actions and foreign origins. A test-only RPC proxy on port 19001 injects failures
+in `getSignaturesForAddress` and `getTransaction`. Two regression cases verify
+that current state, sponsor freeze, revocation, compliance-hold updates and
+re-admission still work, and that Refresh restores the timeline after recovery.
+Test services stop when the suite ends. The Rust
 integration suite also checks real transfers before revocation, after
 revocation, after sponsor freeze, and after restoration, including the retained
 balance and a second account outside the supplied freeze scope. The regular

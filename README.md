@@ -105,11 +105,11 @@ in [`app/`](app/README.md) presents the same flow.
 
 **UC2, the credential lifecycle, is implemented.** The demo supports native SAS
 revocation, atomic close-and-reissue renewal, sponsor freeze of a supplied token
-account, wallet block and invalidation controls, and re-admission. A recent
+account, compliance hold and invalidation controls, and re-admission. A recent
 transaction timeline records withdrawal and restoration from chain history.
 Integration tests prove that revocation alone permits transfers, sponsor freeze
 stops them while retaining the balance, and valid renewal restores admission
-only after explicit blocks and wallet invalidation are cleared.
+only after compliance holds and wallet invalidation are cleared.
 
 **Later use cases are not implemented.** These include screening-feed
 integration, multi-issuer trust tiers, and the second-mint policy fixture. The schema

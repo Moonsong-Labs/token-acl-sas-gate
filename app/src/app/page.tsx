@@ -151,7 +151,7 @@ export default function Overview() {
               }}
             >
               Revoke or renew a credential, freeze the supplied account, and request admission
-              again. Explicit blocks survive renewal. The second fund is a later use case.
+              again. Compliance holds survive renewal. The second fund is a later use case.
             </p>
           </div>
 
