@@ -4,6 +4,7 @@ import {
   address,
   getAddressEncoder,
   getAddressDecoder,
+  getBase58Encoder,
   getProgramDerivedAddress,
   createKeyPairSignerFromPrivateKeyBytes,
   createTransactionMessage,
@@ -228,6 +229,7 @@ export async function issue(
   jurisdiction: string,
   verifiedAt: bigint,
   expiry: bigint,
+  replace = false,
 ) {
   const evidence = await pda(
     SAS,
@@ -237,6 +239,7 @@ export async function issue(
     key(wallet),
   );
   return send(payer, [
+    ...(replace ? [await closeEvidence(payer, issuer, credential, evidence)] : []),
     ix(
       SAS,
       bytes(
@@ -255,6 +258,66 @@ export async function issue(
       ],
     ),
   ]);
+}
+
+async function closeEvidence(
+  payer: KeyPairSigner, issuer: KeyPairSigner, credential: Address, evidence: Address,
+) {
+  return ix(SAS, [7], [signed(payer, true), signed(issuer), ro(credential), rw(evidence),
+    ro(await pda(SAS, "__event_authority")), ro(SYSTEM), ro(SAS)]);
+}
+
+export async function revoke(
+  payer: KeyPairSigner, issuer: KeyPairSigner, credential: Address, evidence: Address,
+) {
+  return send(payer, [await closeEvidence(payer, issuer, credential, evidence)]);
+}
+
+export async function freeze(payer: KeyPairSigner, mint: Address, token: Address) {
+  return send(payer, [ix(TOKEN_ACL, [5], [signed(payer), ro(mint), rw(token),
+    ro(await pda(TOKEN_ACL, "MINT_CONFIG", key(mint))), ro(TOKEN)])]);
+}
+
+export async function setStatus(
+  payer: KeyPairSigner, mint: Address, subject: Address, blocked: boolean, invalidated: boolean,
+) {
+  return send(payer, [ix(GATE, [2, Number(blocked), Number(invalidated)], [
+    signed(payer, true), signed(payer), ro(mint),
+    ro(await pda(TOKEN_ACL, "MINT_CONFIG", key(mint))), ro(subject),
+    rw(await pda(GATE, "status", key(mint), key(subject))), ro(SYSTEM),
+  ])]);
+}
+
+/** Recent confirmed lifecycle transactions, reconstructed from RPC history. */
+export async function history(token: Address, evidence: Address, walletStatus: Address) {
+  const lists = await Promise.all([token, evidence, walletStatus].map((a) =>
+    rpc<{ signature: string; slot: number; blockTime: number | null; err: unknown }[]>(
+      "getSignaturesForAddress", [a, { limit: 30, commitment: "confirmed" }])));
+  const signatures = [...new Map(lists.flat().filter((s) => !s.err).map((s) => [s.signature, s])).values()]
+    .sort((a, b) => b.slot - a.slot).slice(0, 30);
+  const entries = await Promise.all(signatures.map(async (s) => {
+    const tx = await rpc<null | { meta: { err: unknown }; transaction: { message: {
+      accountKeys: Address[]; instructions: { programIdIndex: number; accounts: number[]; data: string }[];
+    } } }>("getTransaction", [s.signature, { encoding: "json", commitment: "confirmed", maxSupportedTransactionVersion: 0 }]);
+    if (!tx || tx.meta.err) return null;
+    const messages: string[] = [];
+    for (const instruction of tx.transaction.message.instructions) {
+      const program = tx.transaction.message.accountKeys[instruction.programIdIndex];
+      const data = getBase58Encoder().encode(instruction.data);
+      const target = (index: number) =>
+        tx.transaction.message.accountKeys[instruction.accounts[index]];
+      if (program === SAS && data[0] === 7 && target(3) === evidence) messages.push("Credential revoked");
+      if (program === SAS && data[0] === 6 && target(4) === evidence) messages.push("Credential issued");
+      if (program === TOKEN_ACL && data[0] === 5 && target(2) === token) messages.push("Access withdrawn by sponsor freeze");
+      if (program === TOKEN_ACL && data[0] === 6 && target(2) === token) messages.push("Access granted");
+      if (program === GATE && data[0] === 2 && target(5) === walletStatus) messages.push(`Wallet status: compliance hold ${data[1] ? "on" : "off"}, invalidation ${data[2] ? "on" : "off"}`);
+    }
+    if (!messages.length) return null;
+    return { signature: s.signature, slot: s.slot, time: s.blockTime,
+      message: messages.includes("Credential revoked") && messages.includes("Credential issued")
+        ? "Credential renewed" : messages.join("; "), transaction: transactionLink(s.signature) };
+  }));
+  return entries.filter((e) => e !== null);
 }
 /**
  * Token-2022 `MintTo`. A frozen destination is refused by Token-2022 itself,

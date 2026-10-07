@@ -48,14 +48,14 @@ export default function IssuerScreen() {
   const { issuer, registry, fund } = state;
   const investor = state.investors.find((i) => i.id === who)!;
   const onFile = investor.credential;
-  const result = results[who]?.action === "issue" ? results[who] : null;
+  const result = ["issue", "renew", "revoke"].includes(results[who]?.action ?? "") ? results[who] : null;
   const maxAge = fund.policy.maxAge;
 
   return (
     <Screen role="issuer" roleLabel={`Issuer · ${issuer.name}`}>
       <PageTitle
         eyebrow={`Issuer · authorized by ${registry.name}`}
-        title="Issue a KYC credential"
+        title="Issue, renew or revoke KYC"
       />
       <ActionError />
 
@@ -149,7 +149,8 @@ export default function IssuerScreen() {
           <p style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.45 }}>
             {fund.name} requires KYC completed within the last{" "}
             {maxAge === 0 ? "— no limit" : formatDuration(maxAge)}, and a credential that has not
-            expired. Dates are set from network time.
+            expired. Dates are set from network time. Renewal replaces evidence atomically,
+            preserves compliance holds and invalidation, and does not thaw a frozen account.
           </p>
 
           <div>
@@ -168,15 +169,13 @@ export default function IssuerScreen() {
             <button
               className="btn violet"
               type="button"
-              disabled={busy || Boolean(onFile) || !issuer.authorized}
-              onClick={() => run("issue", who, { verified, validity })}
+              disabled={busy || !issuer.authorized}
+              onClick={() => run(onFile ? "renew" : "issue", who, { verified, validity })}
             >
-              Issue credential
+              {onFile ? "Renew credential" : "Issue credential"}
             </button>
             {onFile && (
-              <span style={{ fontSize: 12, color: "var(--muted)" }}>
-                {investor.name} already holds one. Renewal arrives with the lifecycle screens.
-              </span>
+              <button className="btn ghost" disabled={busy || !issuer.authorized} onClick={() => run("revoke", who)}>Revoke credential</button>
             )}
           </div>
           {result && (
@@ -247,9 +246,9 @@ export default function IssuerScreen() {
               </>
             ) : (
               <p style={{ fontSize: 13, color: "var(--ink2)", lineHeight: 1.5 }}>
-                {investor.name} has no credential.{" "}
-                <Link href={`/investor/${investor.id}`}>Their account is frozen</Link> until one
-                is issued that meets {fund.name}&rsquo;s policy.
+                {investor.name} has no credential. An active account remains active until the
+                sponsor freezes it. <Link href={`/investor/${investor.id}`}>Open the account</Link>
+                {" "}to see its current state.
               </p>
             )}
           </div>
