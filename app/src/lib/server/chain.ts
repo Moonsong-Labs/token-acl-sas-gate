@@ -311,6 +311,8 @@ export async function history(token: Address, evidence: Address, walletStatus: A
     } } }>("getTransaction", [s.signature, { encoding: "json", commitment: "confirmed", maxSupportedTransactionVersion: 0 }]);
     if (!tx || tx.meta.err) return null;
     const messages: string[] = [];
+    let frozen = false;
+    let holdAdded = false;
     for (const instruction of tx.transaction.message.instructions) {
       const program = tx.transaction.message.accountKeys[instruction.programIdIndex];
       const data = getBase58Encoder().encode(instruction.data);
@@ -318,14 +320,25 @@ export async function history(token: Address, evidence: Address, walletStatus: A
         tx.transaction.message.accountKeys[instruction.accounts[index]];
       if (program === SAS && data[0] === 7 && target(3) === evidence) messages.push("Credential revoked");
       if (program === SAS && data[0] === 6 && target(4) === evidence) messages.push("Credential issued");
-      if (program === TOKEN_ACL && data[0] === 5 && target(2) === token) messages.push("Access withdrawn by sponsor freeze");
+      if (program === TOKEN_ACL && data[0] === 5 && target(2) === token) {
+        messages.push("Access withdrawn by sponsor freeze");
+        frozen = true;
+      }
       if (program === TOKEN_ACL && data[0] === 6 && target(2) === token) messages.push("Access granted");
-      if (program === GATE && data[0] === 2 && target(5) === walletStatus) messages.push(`Wallet status: compliance hold ${data[1] ? "on" : "off"}, invalidation ${data[2] ? "on" : "off"}`);
+      if (program === GATE && data[0] === 2 && target(5) === walletStatus) {
+        messages.push(`Wallet status: compliance hold ${data[1] ? "on" : "off"}, invalidation ${data[2] ? "on" : "off"}`);
+        holdAdded ||= data[1] === 1;
+      }
     }
     if (!messages.length) return null;
     return { signature: s.signature, slot: s.slot, time: s.blockTime,
+      // The website sends holds and freezes separately; only the screening feed
+      // (scripts/screening.ts) combines them, so together they mark a sanctions hit.
       message: messages.includes("Credential revoked") && messages.includes("Credential issued")
-        ? "Credential renewed" : messages.join("; "), transaction: transactionLink(s.signature) };
+        ? "Credential renewed"
+        : frozen && holdAdded
+          ? "Screening hit: compliance hold added and account frozen"
+          : messages.join("; "), transaction: transactionLink(s.signature) };
   }));
   return entries.filter((e) => e !== null);
 }

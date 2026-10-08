@@ -198,7 +198,8 @@ feed is the scripted path to it.
 After Lena is admitted (Present UC1, steps 1 to 4):
 
 1. `mise run screen hit lena`: one transaction blocks her wallet and freezes her
-   supplied token account. Refresh `/investor/lena`: the account is frozen.
+   supplied token account. Refresh `/investor/lena`: the account is frozen, and the
+   access timeline shows the screening hit.
 2. Click **Request access**. The gate denies it with `Blocked · 5`, although her
    credential is genuine and current, and renewing it on `/issuer` does not help.
    Running `hit` again sends nothing.
@@ -238,6 +239,10 @@ actions and foreign origins. A test-only RPC proxy on port 19001 injects failure
 in `getSignaturesForAddress` and `getTransaction`. Two regression cases verify
 that current state, sponsor freeze, revocation, compliance-hold updates and
 re-admission still work, and that Refresh restores the timeline after recovery.
+`tests/screening.spec.ts` runs the UC3 screening script against the same session
+and checks, through the demo API, that a hit holds and freezes in one transaction,
+repeats and delistings send nothing, renewal cannot clear the hold, only a lift
+does, and the invalidation flag is preserved.
 Test services stop when the suite ends. The Rust
 integration suite also checks real transfers before revocation, after
 revocation, after sponsor freeze, and after restoration, including the retained

@@ -64,8 +64,8 @@ async function main() {
     console.log(state());
     console.log(
       blocked
-        ? "Delisting recorded for review. The block stays until an authorized reviewer runs lift."
-        : "Delisting recorded. The wallet has no block, so nothing changes.",
+        ? "Delisting received: a review is due. The block stays until an authorized reviewer runs lift."
+        : "Delisting received. The wallet has no block, so nothing changes.",
     );
     return;
   }
@@ -103,6 +103,10 @@ main().catch((e) => {
   if (e instanceof RpcFailure) {
     console.error(e.message);
     for (const line of e.details.logs ?? []) console.error(line);
-  } else console.error(e);
+  } else {
+    // A message, not a stack trace: e.g. a confirmation timeout. Re-running is
+    // safe, since the feed reads chain state first and sends only what is needed.
+    console.error(e instanceof Error ? e.message : e);
+  }
   process.exitCode = 1;
 });

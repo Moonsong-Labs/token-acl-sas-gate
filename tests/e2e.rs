@@ -1106,8 +1106,9 @@ async fn uc2_wallet_invalidation_survives_reissuance_until_authorized_clear() {
 }
 
 /// UC3: a simulated screening feed. A sanctions hit blocks the wallet and
-/// freezes the supplied token account in one transaction; a delisting writes
-/// nothing; only an authorized review lifts the block.
+/// freezes the supplied token account in one transaction; only an authorized
+/// review lifts the block. A delisting has no instruction (the feed only reports
+/// a review), so `app/tests/screening.spec.ts` covers it through the script.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "builds the program with cargo build-sbf; run via `mise run integration`"]
 async fn uc3_sanctions_hit_blocks_and_freezes_until_authorized_review() {
@@ -1148,10 +1149,6 @@ async fn uc3_sanctions_hit_blocks_and_freezes_until_authorized_review() {
     f.issue("DE", f.now, f.now + 172800);
     gate_denied(&f.send_thaw(), GateError::Blocked);
     assert_eq!(f.token_state(), 2);
-
-    // A delisting writes nothing: the feed only opens a review.
-    assert_eq!(f.wallet_flags(), [1, 0]);
-    gate_denied(&f.send_thaw(), GateError::Blocked);
 
     // Only the authorized reviewer lifts the block.
     gate_denied(

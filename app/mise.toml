@@ -44,5 +44,5 @@ description = "Check the demo TypeScript"
 run = "npm run typecheck"
 
 [tasks.e2e]
-description = "Build the website and test UC1 and UC2 in a browser against an isolated surfnet"
+description = "Build the website and test UC1 to UC3 against an isolated surfnet"
 run = "npm run test:e2e"
