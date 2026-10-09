@@ -242,7 +242,8 @@ re-admission still work, and that Refresh restores the timeline after recovery.
 `tests/screening.spec.ts` runs the UC3 screening script against the same session
 and checks, through the demo API, that a hit holds and freezes in one transaction,
 repeats and delistings send nothing, renewal cannot clear the hold, only a lift
-does, and the invalidation flag is preserved.
+does, a lift reports whether the account stays frozen or active, and the
+invalidation flag is preserved.
 Test services stop when the suite ends. The Rust
 integration suite also checks real transfers before revocation, after
 revocation, after sponsor freeze, and after restoration, including the retained

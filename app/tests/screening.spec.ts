@@ -102,7 +102,7 @@ test("UC3: a screening hit holds and freezes until an authorized lift", async ({
   // The review lifts the hold. That does not thaw; requesting access does.
   run = await screen("lift", "lena");
   expect(run.code, run.out).toBe(0);
-  expect(run.out).toContain("Block lifted");
+  expect(run.out).toContain("Block lifted. The account stays frozen");
   s = await lena(request);
   expect(s.walletStatus.blocked).toBe(false);
   expect(s.active).toBe(false);
@@ -117,6 +117,16 @@ test("UC3: a screening hit holds and freezes until an authorized lift", async ({
   expect(await denied(request)).toBe(11);
   expect((await act(request, "validate")).ok).toBe(true);
   expect((await act(request, "activate")).ok).toBe(true);
+
+  // A hold added by hand leaves the account active, and a lift reports that.
+  expect((await act(request, "block")).ok).toBe(true);
+  expect((await lena(request)).active).toBe(true);
+  run = await screen("lift", "lena");
+  expect(run.code, run.out).toBe(0);
+  expect(run.out).toContain("Block lifted. The account was not frozen, so it stays active.");
+  s = await lena(request);
+  expect(s.walletStatus.blocked).toBe(false);
+  expect(s.active).toBe(true);
 });
 
 test("the screening feed rejects unknown events and investors", async () => {

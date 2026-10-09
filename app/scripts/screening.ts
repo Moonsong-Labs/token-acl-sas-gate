@@ -93,7 +93,9 @@ async function main() {
   console.log(
     event === "hit"
       ? `Sanctions hit: ${investor.name}'s wallet is blocked${active ? " and the supplied token account is frozen" : ""}.`
-      : "Block lifted. The account stays frozen until the investor requests access again.",
+      : active
+        ? "Block lifted. The account was not frozen, so it stays active."
+        : "Block lifted. The account stays frozen until the investor requests access again.",
   );
   console.log(`Signature ${signature}`);
   const link = transactionLink(signature);
