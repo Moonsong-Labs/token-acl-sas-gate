@@ -321,20 +321,55 @@ impl Admission {
             &[self.harness.payer()],
         )
     }
+    pub fn freeze_ix(&self, authority: &Pubkey) -> Instruction {
+        Freeze {
+            authority: *authority,
+            mint: self.mint,
+            token_account: self.token,
+            mint_config: MintConfig::find_pda(&self.mint).0,
+            token_program: TOKEN,
+        }
+        .instruction()
+    }
     pub fn freeze(&self) {
         self.harness
             .send(
-                &[Freeze {
-                    authority: self.harness.payer().pubkey(),
-                    mint: self.mint,
-                    token_account: self.token,
-                    mint_config: MintConfig::find_pda(&self.mint).0,
-                    token_program: TOKEN,
-                }
-                .instruction()],
+                &[self.freeze_ix(&self.harness.payer().pubkey())],
                 &[self.harness.payer()],
             )
             .assert_success();
+    }
+    /// The investor wallet's `[blocked, invalidated]` flags.
+    pub fn wallet_flags(&self) -> [u8; 2] {
+        let data = self
+            .harness
+            .rpc()
+            .get_account(&status_pda(&self.mint, &self.investor.pubkey()))
+            .unwrap()
+            .data;
+        [data[1], data[2]]
+    }
+    /// Simulated feed: a sanctions hit blocks the wallet (keeping its invalidation
+    /// flag) and freezes the supplied token account if it is active. The status
+    /// write comes first, so an unauthorized signer fails before anything freezes.
+    pub fn sanctions_hit(&self, authority: &Pubkey) -> Vec<Instruction> {
+        let mut ixs = vec![self.status(
+            &self.investor.pubkey(),
+            Some([1, self.wallet_flags()[1]]),
+            authority,
+        )];
+        if self.token_state() == 1 {
+            ixs.push(self.freeze_ix(authority));
+        }
+        ixs
+    }
+    /// The reviewer's outcome: clear the block, keeping the invalidation flag.
+    pub fn lift_block(&self, authority: &Pubkey) -> Instruction {
+        self.status(
+            &self.investor.pubkey(),
+            Some([0, self.wallet_flags()[1]]),
+            authority,
+        )
     }
     pub fn token_state(&self) -> u8 {
         self.harness.rpc().get_account(&self.token).unwrap().data[108]

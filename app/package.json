@@ -11,6 +11,7 @@
     "start": "next start --hostname 127.0.0.1",
     "typecheck": "tsc --noEmit",
     "seed": "tsx scripts/seed.ts",
+    "screen": "tsx scripts/screening.ts",
     "surfnet": "surfpool start --offline --no-tui --no-deploy -y --airdrop-amount 0",
     "test:e2e": "npm run build && playwright test"
   },

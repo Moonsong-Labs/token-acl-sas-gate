@@ -27,6 +27,10 @@ run = "npm run surfnet"
 description = "Deploy pinned programs and create a fresh UC1 demo session"
 run = "npm run seed"
 
+[tasks.screen]
+description = "Simulated screening feed: hit, delist or lift an investor's wallet block"
+run = "npm run screen --"
+
 [tasks.dev]
 description = "Run the Next dev server"
 run = "npm run dev"
@@ -40,5 +44,5 @@ description = "Check the demo TypeScript"
 run = "npm run typecheck"
 
 [tasks.e2e]
-description = "Build the website and test UC1 and UC2 in a browser against an isolated surfnet"
+description = "Build the website and test UC1 to UC3 against an isolated surfnet"
 run = "npm run test:e2e"

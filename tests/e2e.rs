@@ -1104,3 +1104,82 @@ async fn uc2_wallet_invalidation_survives_reissuance_until_authorized_clear() {
         .assert_success();
     f.send_thaw().assert_success();
 }
+
+/// UC3: a simulated screening feed. A sanctions hit blocks the wallet and
+/// freezes the supplied token account in one transaction; only an authorized
+/// review lifts the block. A delisting has no instruction (the feed only reports
+/// a review), so `app/tests/screening.spec.ts` covers it through the script.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "builds the program with cargo build-sbf; run via `mise run integration`"]
+async fn uc3_sanctions_hit_blocks_and_freezes_until_authorized_review() {
+    use doors_of_durin::GateError;
+    use support::admission::Admission;
+    let f = Admission::start().await;
+    let payer = f.harness.payer().pubkey();
+    let investor = f.investor.pubkey();
+    f.send_thaw().assert_success();
+    assert_eq!(f.token_state(), 1);
+
+    // An unauthorized hit fails at the status write; the freeze never lands.
+    gate_denied(
+        &f.harness.send(
+            &f.sanctions_hit(&investor),
+            &[f.harness.payer(), &f.investor],
+        ),
+        GateError::Unauthorized,
+    );
+    assert_eq!(f.wallet_flags(), [0, 0]);
+    assert_eq!(f.token_state(), 1);
+
+    // An authorized hit blocks the wallet and freezes the account atomically.
+    let hit = f
+        .harness
+        .send(&f.sanctions_hit(&payer), &[f.harness.payer()]);
+    hit.assert_success();
+    assert!(
+        hit.logs
+            .iter()
+            .any(|line| line.contains("blocked=1 invalidated=0"))
+    );
+    assert_eq!(f.wallet_flags(), [1, 0]);
+    assert_eq!(f.token_state(), 2);
+
+    // Renewed, valid evidence cannot clear the block.
+    f.revoke();
+    f.issue("DE", f.now, f.now + 172800);
+    gate_denied(&f.send_thaw(), GateError::Blocked);
+    assert_eq!(f.token_state(), 2);
+
+    // Only the authorized reviewer lifts the block.
+    gate_denied(
+        &f.harness.send(
+            &[f.lift_block(&investor)],
+            &[f.harness.payer(), &f.investor],
+        ),
+        GateError::Unauthorized,
+    );
+    gate_denied(&f.send_thaw(), GateError::Blocked);
+    f.harness
+        .send(&[f.lift_block(&payer)], &[f.harness.payer()])
+        .assert_success();
+    assert_eq!(f.wallet_flags(), [0, 0]);
+    f.send_thaw().assert_success();
+
+    // A hit keeps an existing invalidation, and lifting the block does not clear it.
+    f.harness
+        .send(
+            &[f.status(&investor, Some([0, 1]), &payer)],
+            &[f.harness.payer()],
+        )
+        .assert_success();
+    f.harness
+        .send(&f.sanctions_hit(&payer), &[f.harness.payer()])
+        .assert_success();
+    assert_eq!(f.wallet_flags(), [1, 1]);
+    assert_eq!(f.token_state(), 2);
+    f.harness
+        .send(&[f.lift_block(&payer)], &[f.harness.payer()])
+        .assert_success();
+    assert_eq!(f.wallet_flags(), [0, 1]);
+    gate_denied(&f.send_thaw(), GateError::Invalidated);
+}

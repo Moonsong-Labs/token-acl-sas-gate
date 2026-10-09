@@ -344,19 +344,29 @@ export async function revoke(
   return send(payer, [await closeEvidence(payer, issuer, credential, evidence)]);
 }
 
+export async function freezeIx(payer: KeyPairSigner, mint: Address, token: Address) {
+  return ix(TOKEN_ACL, [5], [signed(payer), ro(mint), rw(token),
+    ro(await pda(TOKEN_ACL, "MINT_CONFIG", key(mint))), ro(TOKEN)]);
+}
+
 export async function freeze(payer: KeyPairSigner, mint: Address, token: Address) {
-  return send(payer, [ix(TOKEN_ACL, [5], [signed(payer), ro(mint), rw(token),
-    ro(await pda(TOKEN_ACL, "MINT_CONFIG", key(mint))), ro(TOKEN)])]);
+  return send(payer, [await freezeIx(payer, mint, token)]);
+}
+
+export async function setStatusIx(
+  payer: KeyPairSigner, mint: Address, subject: Address, blocked: boolean, invalidated: boolean,
+) {
+  return ix(GATE, [2, Number(blocked), Number(invalidated)], [
+    signed(payer, true), signed(payer), ro(mint),
+    ro(await pda(TOKEN_ACL, "MINT_CONFIG", key(mint))), ro(subject),
+    rw(await pda(GATE, "status", key(mint), key(subject))), ro(SYSTEM),
+  ]);
 }
 
 export async function setStatus(
   payer: KeyPairSigner, mint: Address, subject: Address, blocked: boolean, invalidated: boolean,
 ) {
-  return send(payer, [ix(GATE, [2, Number(blocked), Number(invalidated)], [
-    signed(payer, true), signed(payer), ro(mint),
-    ro(await pda(TOKEN_ACL, "MINT_CONFIG", key(mint))), ro(subject),
-    rw(await pda(GATE, "status", key(mint), key(subject))), ro(SYSTEM),
-  ])]);
+  return send(payer, [await setStatusIx(payer, mint, subject, blocked, invalidated)]);
 }
 
 /** Recent confirmed lifecycle transactions, reconstructed from RPC history. */
@@ -372,6 +382,8 @@ export async function history(token: Address, evidence: Address, walletStatus: A
     } } }>("getTransaction", [s.signature, { encoding: "json", commitment: "confirmed", maxSupportedTransactionVersion: 0 }]);
     if (!tx || tx.meta.err) return null;
     const messages: string[] = [];
+    let frozen = false;
+    let holdAdded = false;
     for (const instruction of tx.transaction.message.instructions) {
       const program = tx.transaction.message.accountKeys[instruction.programIdIndex];
       const data = getBase58Encoder().encode(instruction.data);
@@ -379,14 +391,25 @@ export async function history(token: Address, evidence: Address, walletStatus: A
         tx.transaction.message.accountKeys[instruction.accounts[index]];
       if (program === SAS && data[0] === 7 && target(3) === evidence) messages.push("Credential revoked");
       if (program === SAS && data[0] === 6 && target(4) === evidence) messages.push("Credential issued");
-      if (program === TOKEN_ACL && data[0] === 5 && target(2) === token) messages.push("Access withdrawn by sponsor freeze");
+      if (program === TOKEN_ACL && data[0] === 5 && target(2) === token) {
+        messages.push("Access withdrawn by sponsor freeze");
+        frozen = true;
+      }
       if (program === TOKEN_ACL && data[0] === 6 && target(2) === token) messages.push("Access granted");
-      if (program === GATE && data[0] === 2 && target(5) === walletStatus) messages.push(`Wallet status: compliance hold ${data[1] ? "on" : "off"}, invalidation ${data[2] ? "on" : "off"}`);
+      if (program === GATE && data[0] === 2 && target(5) === walletStatus) {
+        messages.push(`Wallet status: compliance hold ${data[1] ? "on" : "off"}, invalidation ${data[2] ? "on" : "off"}`);
+        holdAdded ||= data[1] === 1;
+      }
     }
     if (!messages.length) return null;
     return { signature: s.signature, slot: s.slot, time: s.blockTime,
+      // The website sends holds and freezes separately; only the screening feed
+      // (scripts/screening.ts) combines them, so together they mark a sanctions hit.
       message: messages.includes("Credential revoked") && messages.includes("Credential issued")
-        ? "Credential renewed" : messages.join("; "), transaction: transactionLink(s.signature) };
+        ? "Credential renewed"
+        : frozen && holdAdded
+          ? "Screening hit: compliance hold added and account frozen"
+          : messages.join("; "), transaction: transactionLink(s.signature) };
   }));
   return entries.filter((e) => e !== null);
 }

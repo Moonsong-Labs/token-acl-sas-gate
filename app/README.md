@@ -197,6 +197,34 @@ account reads and enforcement actions remain available. Actions do not read
 transaction history before submission. Refresh retries the optional timeline.
 No detection service or one-hour enforcement guarantee is provided.
 
+## Simulate a screening feed (UC3)
+
+`mise run screen <hit|delist|lift> <lena|mark>` plays a screening feed from the
+terminal, with the website running. It calls the gate's authorized status
+instruction and Token ACL freeze, signed by the fund operator's key, which is the
+authority in the mint's Token ACL config. It is a fixture, not a production adapter
+service. The `/compliance` screen from UC2 writes the same wallet block by hand; the
+feed is the scripted path to it.
+
+After Lena is admitted (Present UC1, steps 1 to 4):
+
+1. `mise run screen hit lena`: one transaction blocks her wallet and freezes her
+   supplied token account. Refresh `/investor/lena`: the account is frozen, and the
+   access timeline shows the screening hit.
+2. Click **Request access**. The gate denies it with `Blocked · 5`, although her
+   credential is genuine and current, and renewing it on `/issuer` does not help.
+   Running `hit` again sends nothing.
+3. `mise run screen delist lena`: she is off the list. This writes nothing; it only
+   reports that a review is due. Requesting access is still denied.
+4. `mise run screen lift lena`: the review outcome lifts the block. The account
+   stays frozen until she requests access again, which now succeeds.
+
+A hit and a delisting are separate events: only an authorized lift clears a block.
+The block is on the wallet under this fund, so it also covers any new token account
+she opens. The invalidation flag is preserved by every write. The script reads it
+and writes it back, so do not run it while a website action is in flight. Only the
+supplied token account freezes; discovering every account of a wallet is out of scope.
+
 ## Verify
 
 Run these commands from `app/` after building the gate:
@@ -233,6 +261,11 @@ to fail chosen RPC calls. The tests seed a separate session under `.demo/e2e`.
   confirmation cannot be read, the outcome is confirmed by polling or reported
   as unconfirmed with its signature, never as rejected. A gate denial survives a
   failed read after it, and errors do not linger.
+- `tests/screening.spec.ts` runs the UC3 screening script against the same
+  session and checks, through the demo API, that a hit holds and freezes in one
+  transaction, repeats and delistings send nothing, renewal cannot clear the
+  hold, only a lift does, a lift reports whether the account stays frozen or
+  active, and the invalidation flag is preserved.
 - `tests/units.spec.ts` checks the pure helpers without a browser.
 
 Test services stop when the suite ends. The Rust integration suite also checks
