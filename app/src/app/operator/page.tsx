@@ -5,7 +5,7 @@ import { PageTitle, Screen } from "@/components/Chrome";
 import { ActionError, Unavailable } from "@/components/Notice";
 import { ChainDetails } from "@/components/ChainDetails";
 import { TransactionLink } from "@/components/TransactionLink";
-import { formatDuration, regionList, short, useDemo } from "@/lib/client";
+import { ageLimit, regionList, short, useDemo } from "@/lib/client";
 
 function Mark({ ok }: { ok: boolean }) {
   return (
@@ -161,7 +161,7 @@ export default function OperatorScreen() {
                       disabled={busy}
                       onClick={() => run("allocate", investor.id)}
                     >
-                      Allocate 25,000
+                      Allocate {fund.allocation.toLocaleString("en-GB")}
                     </button>
                   </div>
                   {shown && (
@@ -212,7 +212,7 @@ export default function OperatorScreen() {
               <div className="kv">
                 <span style={{ color: "var(--ink2)" }}>KYC completed within</span>
                 <span style={{ fontWeight: 600 }}>
-                  {policy.maxAge === 0 ? "No age limit" : `the last ${formatDuration(policy.maxAge)}`}
+                  {ageLimit(policy.maxAge) === null ? "No age limit" : `the last ${ageLimit(policy.maxAge)}`}
                 </span>
               </div>
               <div className="kv">

@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile, unlink } from "node:fs/promises";
 import { resolve } from "node:path";
 import { type Address } from "@solana/kit";
 import {
@@ -11,6 +11,8 @@ import {
   ledgerNow,
   transactionLink,
   RpcFailure,
+  type Submitted,
+  Unconfirmed,
   revoke,
   freeze,
   setStatus,
@@ -30,7 +32,7 @@ import {
   decodeStatus,
   decodeTokenAccount,
 } from "./accounts";
-import { CODES, type Decision } from "../gate";
+import { CODES, locate, type Decision } from "../gate";
 
 export const INVESTORS = ["lena", "mark"] as const;
 export type InvestorId = (typeof INVESTORS)[number];
@@ -145,7 +147,6 @@ export async function snapshot(includeHistory = true) {
           signer: evidence.signer,
           issuerName:
             evidence.signer === m.issuer.address ? m.issuer.name : null,
-          subjectMatches: evidence.nonce === investor.wallet,
         },
       };
     }),
@@ -158,6 +159,8 @@ export async function snapshot(includeHistory = true) {
       symbol: m.fund.symbol,
       mint: m.fund.mint,
       decimals: mint.decimals,
+      /** Whole tokens minted per allocation, for the screens' labels. */
+      allocation: Number(ALLOCATION),
       config: shared.config,
       configAuthority: config.authority,
       // The four setup steps that must all hold before anyone can ask for access
@@ -224,9 +227,14 @@ export type ActionResult = {
   /** Surfpool Studio link to the confirmed transaction. Refusals have none. */
   transaction?: string;
   logs?: string[];
-  /** Absent when the chain could not be re-read after a confirmed transaction. */
+  /** Sent, but whether it landed is unknown: refresh rather than retry. */
+  unconfirmed?: boolean;
+  /** Absent when the chain could not be re-read after the transaction. */
   state?: DemoSnapshot;
 };
+
+/** Chain state for a result, or `undefined`: a failed read never changes an outcome. */
+const reread = () => snapshot().catch(() => undefined);
 
 // Serialize local demo actions; double clicks cannot issue the same PDA twice.
 let pending: Promise<unknown> = Promise.resolve();
@@ -238,7 +246,10 @@ let pending: Promise<unknown> = Promise.resolve();
  * failed after its send may still have landed. A new request gets a new ID and
  * runs again, which is what lets an investor receive MERID more than once.
  */
-const outcomes = new Map<string, Promise<ActionResult>>();
+const outcomes = new Map<
+  string,
+  { action: string; id: InvestorId; options: string; result: Promise<ActionResult> }
+>();
 const REMEMBERED = 500;
 
 export const ACTIONS = [
@@ -253,11 +264,25 @@ export function act(
   options: IssueOptions = { verified: "today", validity: "year" },
   requestId?: string,
 ): Promise<ActionResult> {
+  const normalizedOptions = action === "issue"
+    ? JSON.stringify({ verified: options.verified, validity: options.validity })
+    : "";
   const seen = requestId ? outcomes.get(requestId) : undefined;
-  if (seen) return seen;
+  if (seen) {
+    // A retry is the same request: replaying another action's outcome under it
+    // would be wrong, so a reused ID is refused.
+    if (seen.action !== action || seen.id !== id || seen.options !== normalizedOptions)
+      throw new Error("This request ID was already used for a different action.");
+    return seen.result;
+  }
   const run = pending.then(async () => {
     const m = await manifest();
     const investor = m.investors[id];
+    const allocationFile = `${manifestPath()}.${investor.token}.allocation.json`;
+    if (action === "allocate") {
+      const unresolved = await unresolvedAllocation(allocationFile);
+      if (unresolved) return uncertainAllocation(unresolved, await reread());
+    }
     // History is presentation data. Do not query it before submitting an action.
     const before = await snapshot(false);
     const current = before.investors.find((i) => i.id === id)!;
@@ -272,15 +297,17 @@ export function act(
     if (action === "freeze" && !current.active)
       throw new Error("This account is already frozen.");
     const payer = await signer(m.payerSeed);
+    // Reads the send depends on happen first, outside the classification below:
+    // a read failure here means nothing was sent, and surfaces as an error.
+    const now = action === "issue" || action === "renew" ? await ledgerNow() : 0n;
 
-    // Only the send is classified: a chain or gate rejection is an outcome to
-    // show, anything else is a failure to surface. Reading state afterwards is
-    // deliberately outside this, so a flaky read after a confirmed transaction
-    // can never be reported as a rejection.
+    // Only the send is classified. `send()` throws RpcFailure only for a
+    // refusal (preflight or on-chain), Unconfirmed when it may have landed, and
+    // a plain error when nothing was sent. Reading state afterwards is outside
+    // this, so a flaky read can never turn an outcome into something else.
     let signature: string;
     try {
       if (action === "issue" || action === "renew") {
-        const now = await ledgerNow();
         signature = await issue(
           payer,
           await signer(m.issuerSeed),
@@ -314,19 +341,34 @@ export function act(
           investor.token,
         );
       } else {
-        const decimals = before.fund.decimals;
         signature = await mintTo(
           payer,
           payer,
           m.fund.mint,
           investor.token,
-          ALLOCATION * 10n ** BigInt(decimals),
+          ALLOCATION * 10n ** BigInt(before.fund.decimals),
+          (tx) => writeFile(allocationFile, JSON.stringify(tx), { mode: 0o600 }),
         );
       }
     } catch (error) {
+      if (error instanceof Unconfirmed)
+        return {
+          ok: false,
+          unconfirmed: true,
+          message:
+            action === "allocate"
+              ? "Sent, but the transaction could not be confirmed. Press Refresh to check chain state. Further allocations are blocked until the saved transaction resolves."
+              : "Sent, but the transaction could not be confirmed. Press Refresh to see whether it landed before acting again.",
+          signature: error.signature,
+          transaction: transactionLink(error.signature),
+          state: await reread(),
+        } satisfies ActionResult;
       if (!(error instanceof RpcFailure)) throw error;
-      return rejection(action, error, !current.credential, await snapshot());
+      if (action === "allocate") await clearAllocation(allocationFile);
+      return rejection(action, error, !current.credential, await reread());
     }
+
+    if (action === "allocate") await clearAllocation(allocationFile).catch(() => undefined);
 
     // The transaction has committed. Nothing below may report it as failed:
     // the caller would retry, and a retry repeats a committed action. A failed
@@ -376,11 +418,46 @@ export function act(
   });
   pending = run.catch(() => undefined);
   if (requestId) {
-    outcomes.set(requestId, run);
+    outcomes.set(requestId, { action, id, options: normalizedOptions, result: run });
     // Keep the map bounded; Map iterates oldest first.
     if (outcomes.size > REMEMBERED) outcomes.delete(outcomes.keys().next().value!);
   }
   return run;
+}
+
+/** Saved before broadcasting; survives page refreshes and server restarts. */
+async function clearAllocation(path: string) {
+  await unlink(path).catch((error: NodeJS.ErrnoException) => {
+    if (error.code !== "ENOENT") throw error;
+  });
+}
+async function unresolvedAllocation(path: string): Promise<Submitted | undefined> {
+  let saved: Submitted;
+  try {
+    saved = JSON.parse(await readFile(path, "utf8"));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+    throw error;
+  }
+  const height = await rpc<number>("getBlockHeight", [{ commitment: "finalized" }]);
+  // Read history after height: a transaction can land during the height read.
+  const { value } = await rpc<{ value: ({ err: unknown; confirmationStatus: string } | null)[] }>(
+    "getSignatureStatuses", [[saved.signature], { searchTransactionHistory: true }],
+  );
+  const status = value[0];
+  if ((status && ["confirmed", "finalized"].includes(status.confirmationStatus)) ||
+      (!status && height > saved.lastValidBlockHeight)) {
+    await clearAllocation(path);
+    return;
+  }
+  return saved;
+}
+function uncertainAllocation(saved: Submitted, state?: DemoSnapshot): ActionResult {
+  return {
+    ok: false, unconfirmed: true, signature: saved.signature,
+    transaction: transactionLink(saved.signature), state,
+    message: "The previous allocation is still unresolved. Further allocations are blocked until its signature confirms, fails, or expires. Press Refresh to check chain state.",
+  };
 }
 
 /** Turn a failed send into an outcome the screens can explain. */
@@ -388,7 +465,7 @@ function rejection(
   action: Action,
   error: RpcFailure,
   noCredential: boolean,
-  state: DemoSnapshot,
+  state: DemoSnapshot | undefined,
 ): ActionResult {
   const logs = error.details?.logs ?? [];
   const code = (
@@ -400,18 +477,21 @@ function rejection(
   const base = { ok: false, logs: [error.message, ...logs], state };
 
   if (action === "activate" && fromGate && code !== undefined && CODES[code]) {
-    const { name, step } = CODES[code];
+    const { name } = CODES[code];
+    const step = locate(code);
+    const missing = code === 2 && noCredential;
     const decision: Decision =
-      step === "inputs_authentic"
-        ? { outcome: "unverified", code, name }
-        : { outcome: "denied", code, name };
+      step === null
+        ? { outcome: "unplaced", code, name }
+        : step === "inputs_authentic"
+          ? { outcome: "unverified", code, name, noCredential: missing }
+          : { outcome: "denied", code, name };
     return {
       ...base,
       decision,
-      message:
-        code === 2 && noCredential
-          ? "No credential on file. The account remains frozen."
-          : "Access refused. The account remains frozen.",
+      message: missing
+        ? "No credential on file. The account remains frozen."
+        : "Access refused. The account remains frozen.",
     };
   }
   // Token-2022 `TokenError::AccountFrozen`.

@@ -82,6 +82,17 @@ The demo uses `http://127.0.0.1:8899` for the RPC by default. To use another loc
 `DEMO_RPC_URL` in `app/.env.local` and start surfnet on that port. Both seeding and
 the server read this variable. Remote networks are outside this demo's scope.
 
+An allocation whose submission or confirmation is uncertain stays locked to its
+saved signature. Refresh reads balances; an unchanged balance does not permit a
+replacement. The next allocation request checks that signature in transaction
+history and only proceeds after confirmation, confirmed failure, or expiration
+at the finalized block height. RPC failures keep the allocation locked. This
+record lives beside the demo session and survives server restarts; keep it while
+the session is in use.
+
+Retries using the same request ID must describe the same action, investor and
+issuance options. Omitted issuance options normalize to today and one year.
+
 ## Screens
 
 | Route | Screen | Role |
@@ -200,22 +211,34 @@ mise run e2e
 (`libnss3`, `libnspr4`, `libasound2`), which requires `sudo`. Without them the
 browser fails to start.
 
-The browser test builds and runs the production website, starts an isolated
-surfnet on port 18999, and serves the test website on port 3300. It seeds a
-separate session under `.demo/e2e` and walks both presentations above across the
-operator, authority, issuer and investor screens. It checks the seeded roles on-chain (the
-credential's authority, its single authorized signer, and each attestation's
-signer), the raw token states for both investors, that no screen scrolls horizontally at phone
-width, that the API exposes no signing keys, and that it rejects unsupported
-actions and foreign origins. A test-only RPC proxy on port 19001 injects failures
-in `getSignaturesForAddress` and `getTransaction`. Two regression cases verify
-that current state, sponsor freeze, revocation, compliance-hold updates and
-re-admission still work, and that Refresh restores the timeline after recovery.
-Test services stop when the suite ends. The Rust
-integration suite also checks real transfers before revocation, after
-revocation, after sponsor freeze, and after restoration, including the retained
-balance and a second account outside the supplied freeze scope. The regular
-demo session is preserved.
+The browser tests build and run the production website, start an isolated
+surfnet on port 18999, and serve the test website on port 3300. The website
+reaches the surfnet through two chained test-only proxies: a history-failure
+proxy on port 19001 that injects failures in `getSignaturesForAddress` and
+`getTransaction`, which forwards to a fault proxy on port 18998 that can be told
+to fail chosen RPC calls. The tests seed a separate session under `.demo/e2e`.
+
+- `tests/admission.spec.ts` walks both presentations above across the operator,
+  authority, issuer and investor screens. It checks the seeded roles on-chain
+  (the credential's authority, its single authorized signer, and each
+  attestation's signer), the raw token states for both investors, that no screen
+  scrolls horizontally at phone width, that the API exposes no signing keys, and
+  that it rejects unsupported actions and foreign origins. Regression cases
+  verify that current state, sponsor freeze, revocation, compliance-hold updates
+  and re-admission still work, and that Refresh restores the timeline after
+  recovery.
+- `tests/resilience.spec.ts` uses the fault proxy to check how outcomes are
+  reported when the RPC misbehaves: an error on sending is only a rejection when
+  its code says the node refused the transaction; otherwise, as when its
+  confirmation cannot be read, the outcome is confirmed by polling or reported
+  as unconfirmed with its signature, never as rejected. A gate denial survives a
+  failed read after it, and errors do not linger.
+- `tests/units.spec.ts` checks the pure helpers without a browser.
+
+Test services stop when the suite ends. The Rust integration suite also checks
+real transfers before revocation, after revocation, after sponsor freeze, and
+after restoration, including the retained balance and a second account outside
+the supplied freeze scope. The regular demo session is preserved.
 
 Run `mise run check` and `mise run verify` from the repository root for the Rust
 checks, SBF build, and surfnet integration suite.

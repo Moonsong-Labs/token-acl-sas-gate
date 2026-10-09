@@ -9,7 +9,7 @@ import { TransactionLink } from "@/components/TransactionLink";
 import { HEADLINES, steps, type Decision } from "@/lib/gate";
 import {
   formatDate,
-  formatDuration,
+  ageLimit,
   regionList,
   regionName,
   short,
@@ -48,7 +48,7 @@ function Outcome({ decision, message }: { decision: Decision; message: string })
   const headline =
     decision.outcome === "rejected"
       ? "Request rejected before the gate decided"
-      : code === 2 && message.startsWith("No credential")
+      : decision.outcome === "unverified" && decision.noCredential
         ? "No credential on file"
         : HEADLINES[code!];
   const explanation =
@@ -56,7 +56,9 @@ function Outcome({ decision, message }: { decision: Decision; message: string })
       ? "The gate evaluated this request against the fund’s policy and refused it at the step marked below."
       : decision.outcome === "unverified"
         ? "The gate could not authenticate a genuine credential for this wallet, so none of the fund’s rules were checked."
-        : "Token ACL or the token program refused the request; the gate did not return a decision.";
+        : decision.outcome === "unplaced"
+          ? "The gate refused this request with a code it can raise at more than one point, so this screen cannot say which checks ran."
+          : "Token ACL or the token program refused the request; the gate did not return a decision.";
 
   return (
     <div
@@ -237,6 +239,12 @@ export function InvestorScreen({ who }: { who: InvestorId }) {
             )}
 
             {decision && result && <Outcome decision={decision} message={result.message} />}
+            {result && !decision && (
+              <p role="status" style={{ fontSize: 13, color: "var(--warn)" }}>
+                {result.message}
+                <TransactionLink href={result.transaction} />
+              </p>
+            )}
             {decision?.outcome === "admitted" && (
               <p role="status" style={{ fontSize: 13, color: "var(--ok)" }}>
                 {result?.message}
@@ -291,7 +299,10 @@ export function InvestorScreen({ who }: { who: InvestorId }) {
               </li>)}
             </ol>}
           </div>
-          {decision && decision.outcome !== "rejected" ? (
+          {decision &&
+          (decision.outcome === "admitted" ||
+            decision.outcome === "denied" ||
+            decision.outcome === "unverified") ? (
             <CheckList
               steps={steps(decision)}
               heading={
@@ -335,8 +346,14 @@ export function InvestorScreen({ who }: { who: InvestorId }) {
                   Showing an <strong>accepted region</strong> ({regionList(fund.policy.jurisdictions)})
                 </li>
                 <li>
-                  With KYC completed within the last{" "}
-                  <strong>{formatDuration(fund.policy.maxAge)}</strong>, and not expired
+                  {ageLimit(fund.policy.maxAge) === null ? (
+                    <>Not expired (this fund sets no KYC age limit)</>
+                  ) : (
+                    <>
+                      With KYC completed within the last{" "}
+                      <strong>{ageLimit(fund.policy.maxAge)}</strong>, and not expired
+                    </>
+                  )}
                 </li>
               </ul>
               <p
