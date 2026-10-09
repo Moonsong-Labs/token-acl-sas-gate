@@ -13,6 +13,7 @@ import {
   appendTransactionMessageInstructions,
   signTransactionMessageWithSigners,
   getBase64EncodedWireTransaction,
+  getSignatureFromTransaction,
   type Address,
   type Instruction,
   type KeyPairSigner,
@@ -62,14 +63,26 @@ export async function pda(
     })
   )[0];
 }
+const LOCAL_HOSTS = ["localhost", "127.0.0.1", "[::1]"];
+/** Whether an HTTP `Host` header names this machine, with an optional port. */
+export function isLocalHost(host: string) {
+  return /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(host);
+}
+/** `value` as a URL, if it is plain HTTP to this machine; throws otherwise. */
+function localHttpUrl(value: string, what: string) {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error(`The demo requires a local ${what} URL.`);
+  }
+  if (url.protocol !== "http:" || !LOCAL_HOSTS.includes(url.hostname))
+    throw new Error(`The demo requires a local ${what} URL.`);
+  return url;
+}
 export function endpoint() {
   const value = process.env.DEMO_RPC_URL ?? "http://127.0.0.1:8899";
-  const url = new URL(value);
-  if (
-    url.protocol !== "http:" ||
-    !["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)
-  )
-    throw new Error("The demo requires a local surfnet RPC.");
+  localHttpUrl(value, "surfnet RPC");
   return value;
 }
 /**
@@ -77,14 +90,8 @@ export function endpoint() {
  * `/?t=<signature>`. Local HTTP only, like the RPC endpoint.
  */
 export function studio() {
-  const value = process.env.DEMO_STUDIO_URL ?? "http://127.0.0.1:18488";
-  const url = new URL(value);
-  if (
-    url.protocol !== "http:" ||
-    !["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)
-  )
-    throw new Error("The demo requires a local Surfpool Studio URL.");
-  return url.origin;
+  return localHttpUrl(process.env.DEMO_STUDIO_URL ?? "http://127.0.0.1:18488", "Surfpool Studio")
+    .origin;
 }
 /** `undefined` when `DEMO_STUDIO_URL` is unusable: the link is never worth failing for. */
 export function transactionLink(signature: string): string | undefined {
@@ -95,14 +102,43 @@ export function transactionLink(signature: string): string | undefined {
     return undefined;
   }
 }
+/**
+ * A transaction was signed and possibly sent, but whether it landed is unknown:
+ * the send itself failed in transit, or its confirmation could not be read.
+ * Never a rejection: retrying could repeat a transaction that went through.
+ */
+export class Unconfirmed extends Error {
+  constructor(public signature: string) {
+    super(`Transaction ${signature} could not be confirmed.`);
+  }
+}
+/** How long to keep polling for confirmation, across transient RPC errors. */
+const CONFIRM_MS = 15_000;
 export class RpcFailure extends Error {
   constructor(
     message: string,
     public details: { err?: unknown; logs?: string[] } = {},
+    /** The JSON-RPC error code, when the failure came from an error response. */
+    public code?: number,
   ) {
     super(message);
   }
 }
+/**
+ * JSON-RPC error codes with which a node refuses a transaction without
+ * broadcasting it (Solana's RPC custom errors, plus malformed requests). Any
+ * other error from `sendTransaction`, e.g. an internal one, can come after the
+ * transaction was accepted, so it is not proof that nothing was sent.
+ */
+const REFUSED = new Set([
+  -32002, // SendTransactionPreflightFailure: simulation failed; logs attached
+  -32003, // TransactionSignatureVerificationFailure
+  -32006, // TransactionPrecompileVerificationFailure
+  -32013, // TransactionSignatureLenMismatch
+  -32015, // UnsupportedTransactionVersion
+  -32600, // Invalid request
+  -32602, // Invalid params: the transaction could not be decoded
+]);
 export async function rpc<T>(
   method: string,
   params: unknown[] = [],
@@ -116,7 +152,8 @@ export async function rpc<T>(
   });
   if (!response.ok) throw new Error(`Surfnet HTTP ${response.status}`);
   const body = await response.json();
-  if (body.error) throw new RpcFailure(body.error.message, body.error.data);
+  if (body.error)
+    throw new RpcFailure(body.error.message, body.error.data, body.error.code);
   return body.result as T;
 }
 export async function account(a: Address) {
@@ -131,10 +168,28 @@ export async function account(a: Address) {
     ? { ...result.value, data: Buffer.from(result.value.data[0], "base64") }
     : null;
 }
-export async function send(payer: KeyPairSigner, instructions: Instruction[]) {
-  const { value } = await rpc<{
-    value: { blockhash: string; lastValidBlockHeight: number };
-  }>("getLatestBlockhash", [{ commitment: "confirmed" }]);
+export type Submitted = { signature: string; lastValidBlockHeight: number };
+/**
+ * Sign, send and confirm. Throws `RpcFailure` only when the transaction was
+ * refused (with a refusal code before broadcasting, or on-chain with an
+ * error), `Unconfirmed` when it may have landed but cannot be confirmed, and a
+ * plain `Error` when nothing was signed.
+ */
+export async function send(
+  payer: KeyPairSigner,
+  instructions: Instruction[],
+  beforeSend?: (tx: Submitted) => Promise<void>,
+) {
+  let latest: { value: { blockhash: string; lastValidBlockHeight: number } };
+  try {
+    latest = await rpc("getLatestBlockhash", [{ commitment: "confirmed" }]);
+  } catch (error) {
+    // Nothing has been signed yet: this is a read failure, not a rejection.
+    throw new Error(
+      `Could not read a recent blockhash: ${error instanceof Error ? error.message : error}`,
+    );
+  }
+  const { value } = latest;
   const message = appendTransactionMessageInstructions(
     instructions,
     setTransactionMessageLifetimeUsingBlockhash(
@@ -149,29 +204,45 @@ export async function send(payer: KeyPairSigner, instructions: Instruction[]) {
     ),
   );
   const transaction = await signTransactionMessageWithSigners(message);
-  const signature = await rpc<string>("sendTransaction", [
-    getBase64EncodedWireTransaction(transaction),
-    { encoding: "base64", preflightCommitment: "confirmed" },
-  ]);
-  for (let attempt = 0; attempt < 100; attempt++) {
-    const result = await rpc<{
-      value: ({ err: unknown; confirmationStatus: string } | null)[];
-    }>("getSignatureStatuses", [[signature]]);
-    const status = result.value[0];
-    if (status?.err)
-      throw new RpcFailure(`Transaction ${signature} failed`, {
-        err: status.err,
-      });
-    if (
-      status &&
-      ["confirmed", "finalized"].includes(status.confirmationStatus)
-    )
+  // Known before sending, so an uncertain outcome can still name the transaction.
+  const signature = getSignatureFromTransaction(transaction);
+  await beforeSend?.({ signature, lastValidBlockHeight: value.lastValidBlockHeight });
+  try {
+    await rpc<string>("sendTransaction", [
+      getBase64EncodedWireTransaction(transaction),
+      { encoding: "base64", preflightCommitment: "confirmed" },
+    ]);
+  } catch (error) {
+    // Only a refusal code proves nothing was sent. Anything else (another
+    // JSON-RPC error, network, HTTP, timeout) may have happened after
+    // delivery: confirm the outcome below instead of assuming one.
+    if (error instanceof RpcFailure && error.code !== undefined && REFUSED.has(error.code))
+      throw error;
+  }
+  const deadline = Date.now() + CONFIRM_MS;
+  while (Date.now() < deadline) {
+    let status: { err: unknown; confirmationStatus: string } | null = null;
+    try {
+      const result = await rpc<{
+        value: ({ err: unknown; confirmationStatus: string } | null)[];
+      }>("getSignatureStatuses", [[signature]]);
+      status = result.value[0];
+    } catch {
+      // A failed status read says nothing about the transaction: poll again.
+    }
+    // Only a confirmed/finalized status is a definitive outcome. A "processed"
+    // status (even with an error) can still be rolled back, so treating it as a
+    // failure would clear the allocation lock too early; keep polling instead.
+    if (status && ["confirmed", "finalized"].includes(status.confirmationStatus)) {
+      if (status.err)
+        throw new RpcFailure(`Transaction ${signature} failed`, {
+          err: status.err,
+        });
       return signature;
+    }
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
-  throw new Error(
-    `Confirmation timed out for ${signature}. Refresh before retrying.`,
-  );
+  throw new Unconfirmed(signature);
 }
 export async function addresses(
   mint: Address,
@@ -352,6 +423,7 @@ export async function mintTo(
   mint: Address,
   token: Address,
   amount: bigint,
+  beforeSend?: (tx: Submitted) => Promise<void>,
 ) {
   return send(payer, [
     ix(TOKEN, bytes([7], num(amount)), [
@@ -359,7 +431,7 @@ export async function mintTo(
       rw(token),
       signed(mintAuthority),
     ]),
-  ]);
+  ], beforeSend);
 }
 export async function activate(
   payer: KeyPairSigner,

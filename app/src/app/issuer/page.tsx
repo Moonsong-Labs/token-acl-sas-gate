@@ -8,7 +8,7 @@ import { ChainDetails } from "@/components/ChainDetails";
 import { TransactionLink } from "@/components/TransactionLink";
 import {
   formatDate,
-  formatDuration,
+  ageLimit,
   regionName,
   short,
   useDemo,
@@ -147,10 +147,11 @@ export default function IssuerScreen() {
           </div>
 
           <p style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.45 }}>
-            {fund.name} requires KYC completed within the last{" "}
-            {maxAge === 0 ? "— no limit" : formatDuration(maxAge)}, and a credential that has not
-            expired. Dates are set from network time. Renewal replaces evidence atomically,
-            preserves compliance holds and invalidation, and does not thaw a frozen account.
+            {ageLimit(maxAge) === null
+              ? `${fund.name} sets no KYC age limit, but requires a credential that has not expired.`
+              : `${fund.name} requires KYC completed within the last ${ageLimit(maxAge)}, and a credential that has not expired.`}{" "}
+            Dates are set from network time. Renewal replaces evidence atomically, preserves
+            compliance holds and invalidation, and does not thaw a frozen account.
           </p>
 
           <div>
