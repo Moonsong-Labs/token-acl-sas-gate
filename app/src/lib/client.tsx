@@ -34,8 +34,9 @@ interface Demo {
   busy: boolean;
   /** The last action's outcome, keyed by investor so each screen shows its own. */
   results: Partial<Record<InvestorId, ActionResult & { action: Action }>>;
+  secondResults: Demo["results"];
   refresh: () => Promise<void>;
-  run: (action: Action, investor: InvestorId, options?: IssueOptions) => Promise<void>;
+  run: (action: Action, investor: InvestorId, options?: IssueOptions, fund?: "retail" | "france") => Promise<void>;
 }
 
 const DemoContext = createContext<Demo | null>(null);
@@ -45,6 +46,7 @@ export function DemoProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [results, setResults] = useState<Demo["results"]>({});
+  const [secondResults, setSecondResults] = useState<Demo["results"]>({});
   // Snapshots come from reads and from actions, and must only ever move the
   // screen forward. An action's own result is the newest state when it lands,
   // so: no navigation read starts while an action runs; `epoch` changes when an
@@ -102,14 +104,14 @@ export function DemoProvider({ children }: { children: ReactNode }) {
   }, [pathname, refresh, quietRefresh]);
 
   const run = useCallback(
-    async (action: Action, investor: InvestorId, options?: IssueOptions) => {
+    async (action: Action, investor: InvestorId, options?: IssueOptions, fund?: "retail" | "france") => {
       inFlight.current += 1;
       epoch.current += 1;
       setBusy(true);
       // One ID per click. If the response is lost in transit, the same request
       // is sent once more under the same ID, and the server returns the
       // original outcome rather than sending the transaction again.
-      const body = JSON.stringify({ action, investor, options, requestId: crypto.randomUUID() });
+      const body = JSON.stringify({ action, investor, options, fund, requestId: crypto.randomUUID() });
       const post = () =>
         fetch("/api/demo", {
           method: "POST",
@@ -121,13 +123,13 @@ export function DemoProvider({ children }: { children: ReactNode }) {
         const data = await response.json();
         if (!response.ok) throw new Error(data.error);
         if (data.state) setState(data.state);
-        setResults((current) => ({ ...current, [investor]: { ...data, action } }));
+        (fund === "france" ? setSecondResults : setResults)((current) => ({ ...current, [investor]: { ...data, action } }));
         setError("");
       } catch (e) {
         setError(e instanceof Error ? e.message : "Action failed.");
         // The previous outcome for this investor no longer describes the last
         // thing that happened; leave only the error.
-        setResults(({ [investor]: _previous, ...rest }) => rest);
+        (fund === "france" ? setSecondResults : setResults)(({ [investor]: _previous, ...rest }) => rest);
       } finally {
         inFlight.current -= 1;
         epoch.current += 1;
@@ -138,7 +140,7 @@ export function DemoProvider({ children }: { children: ReactNode }) {
   );
 
   return (
-    <DemoContext.Provider value={{ state, error, busy, results, refresh, run }}>
+    <DemoContext.Provider value={{ state, error, busy, results, secondResults, refresh, run }}>
       {children}
     </DemoContext.Provider>
   );

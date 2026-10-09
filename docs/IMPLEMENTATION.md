@@ -297,13 +297,13 @@ stale duplicate of expiry or revocation state.
 ## 6. Second-mint fixture — one concrete example, one variable
 
 The second-mint demonstration must vary **only the predicate**. Fixture:
-| Field | Mint A ("EU retail") | Mint B ("US-only") |
+| Field | Mint A ("EU retail") | Mint B ("France") |
 | --- | --- | --- |
 | Schema | `kyc-basic` (placeholder) | `kyc-basic` — **same schema** |
 | Issuer | `issuer-test-1` | `issuer-test-1` — **same issuer** |
 | Expiry | valid | valid — **same validity** |
 | Claim value | `jurisdiction = "DE"` | `jurisdiction = "DE"` — **same claim value** |
-| Policy predicate | accepts `{DE, FR}` | accepts `{US}` |
+| Policy predicate | accepts `{DE, FR}` | accepts `{FR}` |
 | Expected | **thaw allowed** | **denied**, claim-value code |
 
 Same wallet, same attestation account, same evidence bytes — the only difference is which mint's  

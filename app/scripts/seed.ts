@@ -66,7 +66,6 @@ async function main() {
   const payer = await signer(payerSeed);
   const issuer = await signer(issuerSeed);
   const authority = await signer(randomBytes(32).toString("hex"));
-  const mint = await signer(randomBytes(32).toString("hex"));
   await rpc("surfnet_setAccount", [payer.address, { lamports: 10000000000 }]);
   const credential = await pda(
     SAS,
@@ -107,106 +106,114 @@ async function main() {
       ],
     ),
   ]);
-  // Token-2022 DefaultAccountState mint: 166-byte extension header + 5 bytes.
-  await send(payer, [
-    createAccount(payer, mint, 171),
-    ix(TOKEN, [28, 0, 2], [rw(mint.address)]),
-    ix(TOKEN, bytes([20, 6], key(payer.address), [1], key(payer.address)), [
-      rw(mint.address),
-    ]),
-  ]);
-  const config = await pda(TOKEN_ACL, "MINT_CONFIG", key(mint.address));
-  await send(payer, [
-    ix(TOKEN_ACL, bytes([0], key(GATE)), [
-      signed(payer, true),
-      signed(payer),
-      rw(mint.address),
-      rw(config),
-      ro(SYSTEM),
-      ro(TOKEN),
-    ]),
-    ix(TOKEN_ACL, [8, 0, 1], [signed(payer), rw(config)]),
-  ]);
-  const policy = Buffer.alloc(91);
-  policy[0] = 1;
-  key(credential).copy(policy, 1);
-  key(schema).copy(policy, 33);
-  policy[65] = 1;
-  num(MAX_AGE).copy(policy, 66);
-  policy[74] = 2;
-  Buffer.from("DEFR").copy(policy, 75);
-  await send(payer, [
-    ix(GATE, bytes([0], policy), [
-      signed(payer, true),
-      signed(payer),
-      ro(mint.address),
-      ro(config),
-      rw(await pda(GATE, "policy", key(mint.address))),
-      rw(await pda(GATE, "thaw_extra_account_metas", key(mint.address))),
-      ro(schema),
-      ro(SYSTEM),
-    ]),
-  ]);
-  const investors = {} as Manifest["investors"];
-  for (const [id, name, jurisdiction] of [
-    ["lena", "Lena R.", "DE"],
-    ["mark", "Mark T.", "US"],
-  ] as const) {
-    const wallet = await signer(randomBytes(32).toString("hex"));
-    const token = await signer(randomBytes(32).toString("hex"));
+  async function createFund(regions: string, shared?: Manifest["investors"]) {
+    const mint = await signer(randomBytes(32).toString("hex"));
+    // Token-2022 DefaultAccountState mint: 166-byte extension header + 5 bytes.
     await send(payer, [
-      createAccount(payer, token, 170),
-      ix(TOKEN, [22], [rw(token.address)]),
-      ix(TOKEN, bytes([18], key(wallet.address)), [
-        rw(token.address),
-        ro(mint.address),
+      createAccount(payer, mint, 171),
+      ix(TOKEN, [28, 0, 2], [rw(mint.address)]),
+      ix(TOKEN, bytes([20, 6], key(payer.address), [1], key(payer.address)), [
+        rw(mint.address),
       ]),
     ]);
-    const a = await addresses(
-      mint.address,
-      credential,
-      schema,
-      wallet.address,
-      token.address,
-    );
-    await send(
-      payer,
-      [
-        [wallet.address, a.walletStatus],
-        [token.address, a.tokenStatus],
-      ].map(([subject, record]) =>
-        ix(
-          GATE,
-          [1],
-          [
-            signed(payer, true),
-            ro(payer.address),
-            ro(mint.address),
-            ro(config),
-            ro(subject),
-            rw(record),
-            ro(SYSTEM),
-          ],
+    const config = await pda(TOKEN_ACL, "MINT_CONFIG", key(mint.address));
+    await send(payer, [
+      ix(TOKEN_ACL, bytes([0], key(GATE)), [
+        signed(payer, true),
+        signed(payer),
+        rw(mint.address),
+        rw(config),
+        ro(SYSTEM),
+        ro(TOKEN),
+      ]),
+      ix(TOKEN_ACL, [8, 0, 1], [signed(payer), rw(config)]),
+    ]);
+    const policy = Buffer.alloc(91);
+    policy[0] = 1;
+    key(credential).copy(policy, 1);
+    key(schema).copy(policy, 33);
+    policy[65] = 1;
+    num(MAX_AGE).copy(policy, 66);
+    policy[74] = regions.length / 2;
+    Buffer.from(regions).copy(policy, 75);
+    await send(payer, [
+      ix(GATE, bytes([0], policy), [
+        signed(payer, true),
+        signed(payer),
+        ro(mint.address),
+        ro(config),
+        rw(await pda(GATE, "policy", key(mint.address))),
+        rw(await pda(GATE, "thaw_extra_account_metas", key(mint.address))),
+        ro(schema),
+        ro(SYSTEM),
+      ]),
+    ]);
+    const investors = {} as Manifest["investors"];
+    for (const [id, name, jurisdiction] of [
+      ["lena", "Lena R.", "DE"],
+      ["mark", "Mark T.", "US"],
+    ] as const) {
+      const wallet = shared ? { address: shared[id].wallet } : await signer(randomBytes(32).toString("hex"));
+      const token = await signer(randomBytes(32).toString("hex"));
+      await send(payer, [
+        createAccount(payer, token, 170),
+        ix(TOKEN, [22], [rw(token.address)]),
+        ix(TOKEN, bytes([18], key(wallet.address)), [
+          rw(token.address),
+          ro(mint.address),
+        ]),
+      ]);
+      const a = await addresses(
+        mint.address,
+        credential,
+        schema,
+        wallet.address,
+        token.address,
+      );
+      await send(
+        payer,
+        [
+          [wallet.address, a.walletStatus],
+          [token.address, a.tokenStatus],
+        ].map(([subject, record]) =>
+          ix(
+            GATE,
+            [1],
+            [
+              signed(payer, true),
+              ro(payer.address),
+              ro(mint.address),
+              ro(config),
+              ro(subject),
+              rw(record),
+              ro(SYSTEM),
+            ],
+          ),
         ),
-      ),
-    );
-    investors[id] = {
-      name,
-      jurisdiction,
-      wallet: wallet.address,
-      token: token.address,
-    };
+      );
+      investors[id] = {
+        name,
+        jurisdiction,
+        wallet: wallet.address,
+        token: token.address,
+      };
+    }
+    return { mint: mint.address, investors };
   }
+  const retail = await createFund("DEFR");
+  const second = await createFund("FR", retail.investors);
   const manifest: Manifest = {
     rpc: endpoint(),
     payerSeed,
     issuerSeed,
-    fund: { name: "Meridian EU Retail", symbol: "MERID", mint: mint.address },
+    fund: { name: "Meridian EU Retail", symbol: "MERID", mint: retail.mint },
+    secondFund: { name: "Meridian France", symbol: "MFR", mint: second.mint },
+    secondInvestors: second.investors,
     authority: { name: "KYC Trust Registry", address: authority.address },
     issuer: { name: "Acme KYC", address: issuer.address },
     credential,
     schema,
-    investors,
+    investors: retail.investors,
   };
   await mkdir(dirname(manifestPath()), { recursive: true, mode: 0o700 });
   await writeFile(manifestPath() + ".tmp", JSON.stringify(manifest, null, 2), {
@@ -214,8 +221,8 @@ async function main() {
   });
   await rename(manifestPath() + ".tmp", manifestPath());
   console.log(
-    "UC1 ready: Meridian EU Retail (DE/FR), Lena R. (DE) and Mark T. (US), both " +
-      "frozen and without credentials. Acme KYC is an authorized signer of the " +
+    "UC1/UC5 ready: Meridian EU Retail (DE/FR), Lena R. (DE) and Mark T. (US), both " +
+      "frozen and without credentials. Meridian France accepts FR using the same evidence. Acme KYC is an authorized signer of the " +
       "KYC Trust Registry credential.",
   );
 }

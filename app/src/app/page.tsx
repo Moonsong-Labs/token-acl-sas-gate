@@ -101,7 +101,7 @@ export default function Overview() {
       >
         <section style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           <div>
-            <div className="lbl">Live demo · use cases 1 and 2</div>
+            <div className="lbl">Live demo · use cases 1, 2 and 5</div>
             <h1
               className="serif"
               style={{ fontSize: 33, fontWeight: 700, lineHeight: 1.1, letterSpacing: "-.01em" }}
@@ -151,7 +151,7 @@ export default function Overview() {
               }}
             >
               Revoke or renew a credential, freeze the supplied account, and request admission
-              again. Compliance holds survive renewal. The second fund is a later use case.
+              again. Compliance holds survive renewal. Compare admission to two funds using the same credential.
             </p>
           </div>
 
@@ -212,6 +212,7 @@ export default function Overview() {
               <Nav n={2} href="/investor/lena">
                 {lena ? `${lena.name} — account` : "First investor"}
               </Nav>
+              <Nav n={9} href="/funds">Two funds, one credential</Nav>
               <Nav n={6} href="/investor/mark">
                 {mark ? `${mark.name} — account` : "Second investor"}
               </Nav>

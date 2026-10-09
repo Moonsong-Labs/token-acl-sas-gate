@@ -6,7 +6,7 @@ Service (SAS) credential. Credentials are reusable, and subject to renewal, expi
 Companions: `SCOPE.md` (scope, MVP boundary, success criteria) · `IMPLEMENTATION.md` (toolchain,  
 authoritative gate predicate §4, fixtures, test matrix, build order, risks).  
 **MVP = UC1 + UC2 + a second-mint policy fixture.** UC3–UC5 are the _reasons the state model is_  
-_shaped the way it is_; their full implementations are later extensions.
+_shaped the way it is_; UC5's two-mint fixture is implemented; richer rules remain later extensions.
 
 * * *
 
