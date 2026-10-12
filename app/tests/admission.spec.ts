@@ -104,17 +104,17 @@ test("UC1 and UC2: admission, credential lifecycle, sponsor freeze and block pre
   expect(sharedBefore.second.fund.policy.schema).toBe(sharedBefore.fund.policy.schema);
   expect(sharedBefore.second.fund.policy.maxAge).toBe(sharedBefore.fund.policy.maxAge);
   const crossFundId = crypto.randomUUID();
-  const franceRequest = { action: "activate", investor: "lena", fund: "france", requestId: crossFundId };
-  const franceResult = await request.post("/api/demo", {
-    headers: { origin: "http://127.0.0.1:3300" }, data: franceRequest,
+  const usRequest = { action: "activate", investor: "lena", fund: "us", requestId: crossFundId };
+  const usResult = await request.post("/api/demo", {
+    headers: { origin: "http://127.0.0.1:3300" }, data: usRequest,
   });
-  expect((await franceResult.json()).decision.code).toBe(13);
+  expect((await usResult.json()).decision.code).toBe(13);
   const wrongFundRetry = await request.post("/api/demo", {
-    headers: { origin: "http://127.0.0.1:3300" }, data: { ...franceRequest, fund: "retail" },
+    headers: { origin: "http://127.0.0.1:3300" }, data: { ...usRequest, fund: "retail" },
   });
   expect(wrongFundRetry.status()).toBe(400);
   await page.goto("/funds");
-  await page.getByRole("button", { name: "Request access to Meridian France", exact: true }).click();
+  await page.getByRole("button", { name: "Request access to Meridian US", exact: true }).click();
   await expect(page.getByRole("status")).toContainText("Claim · 13");
   await expect(page.getByTestId("fund-state-1")).toHaveText("Frozen");
   await expectTransactionLink(page, false);
@@ -168,6 +168,22 @@ test("UC1 and UC2: admission, credential lifecycle, sponsor freeze and block pre
 
   // Screen 6: a genuine, current credential refused on region alone.
   await issue(page, "mark");
+  await page.goto("/funds");
+  await page.getByLabel("Compare access for").selectOption("mark");
+  await page.getByRole("button", { name: "Request access to Meridian EU Retail", exact: true }).click();
+  await expect(page.getByRole("status")).toContainText("Claim · 13");
+  await expect(page.getByTestId("fund-state-0")).toHaveText("Frozen");
+  await page.getByRole("button", { name: "Request access to Meridian US", exact: true }).click();
+  await expect(page.getByTestId("fund-state-1")).toHaveText("Active");
+  await expectTransactionLink(page, true);
+  const markFunds = await (await request.get("/api/demo")).json();
+  expect(markFunds.second.investors[1].credential).toEqual(markFunds.investors[1].credential);
+  expect(await tokenState(markFunds.investors[1].token)).toBe(2);
+  expect(await tokenState(markFunds.second.investors[1].token)).toBe(1);
+  await page.screenshot({ path: "/tmp/doors-uc5-desktop.png", fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({ path: "/tmp/doors-uc5-phone.png", fullPage: true });
+  await page.setViewportSize({ width: 1280, height: 720 });
   await page.goto("/investor/mark");
   await page.getByRole("button", { name: "Request access" }).click();
   await expect(page.getByRole("status")).toContainText("Region not accepted");

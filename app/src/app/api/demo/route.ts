@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
     const verified = options?.verified ?? "today";
     const validity = options?.validity ?? "year";
     if (
-      !isOneOf(["retail", "france"] as const, fund) ||
+      !isOneOf(["retail", "us"] as const, fund) ||
       !isOneOf(ACTIONS, action) ||
       !isOneOf(INVESTORS, investor) ||
       !isOneOf(Object.keys(VERIFIED) as IssueOptions["verified"][], verified) ||

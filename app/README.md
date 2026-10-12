@@ -8,7 +8,7 @@ state, and every decision is the gate's own.
 The fund accepts investors from Germany or France whose KYC was completed within
 the last 365 days. Lena R. has a DE jurisdiction; Mark T. has a US jurisdiction.
 Both begin with frozen accounts in each fund and no credentials. Meridian
-France accepts only FR, with the same registry, schema and 365-day KYC limit.
+US accepts only United States credentials, with the same registry, schema and 365-day KYC limit.
 Each investor uses one wallet and one credential across both funds.
 
 ## Parties
@@ -231,12 +231,16 @@ supplied token account freezes; discovering every account of a wallet is out of 
 ## Present UC5
 
 Issue Lena a current credential on `/issuer`, then open `/funds`. Request access
-to Meridian France. The gate denies the DE claim with `Claim · 13` and the
-France account stays frozen. Request access to Meridian EU Retail. The gate
+to Meridian US. The gate denies the DE claim with `Claim · 13` and the
+US account stays frozen. Request access to Meridian EU Retail. The gate
 admits the retail account using the same evidence. Only the jurisdiction
 predicate differs; credential renewal and revocation apply to both funds.
 
-Existing sessions must be reseeded with `mise run seed` to create the second fund.
+Issue Mark a current US credential, then select Mark on `/funds`. EU Retail
+refuses his claim; Meridian US admits his account using the same evidence.
+
+Run `mise run seed` from `app/` to replace existing sessions, including the
+France-only fixture, with the US-only second fund.
 
 ## Verify
 

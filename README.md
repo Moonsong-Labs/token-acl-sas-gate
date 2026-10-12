@@ -121,8 +121,9 @@ authorized and unauthorized paths. Real screening-feed integration is not
 implemented.
 
 **UC5's second-mint policy fixture is implemented.** Two funds share each
-investor's SAS evidence. Meridian EU Retail accepts DE/FR; Meridian France
-accepts FR. The same DE credential passes retail and fails France. Policies
+investor's SAS evidence. Meridian EU Retail accepts DE/FR; Meridian US
+accepts US. Lena's DE credential passes retail and fails US; Mark's US
+credential passes US and fails retail. Policies
 and status records remain independent per mint. The demo presents this at `/funds`.
 
 **Later extensions are not implemented.** These include screening-feed

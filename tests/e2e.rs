@@ -1196,7 +1196,7 @@ async fn uc5_shared_evidence_and_independent_mint_policies() {
     f.send_thaw().assert_success();
     assert_eq!(f.token_state(), 1);
     let mut second_policy = f.policy.clone();
-    second_policy.jurisdictions = vec![*b"FR"];
+    second_policy.jurisdictions = vec![*b"US"];
     f.add_fund(second_policy);
     let second_mint = f.mint;
     let second_token = f.token;

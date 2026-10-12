@@ -36,7 +36,7 @@ interface Demo {
   results: Partial<Record<InvestorId, ActionResult & { action: Action }>>;
   secondResults: Demo["results"];
   refresh: () => Promise<void>;
-  run: (action: Action, investor: InvestorId, options?: IssueOptions, fund?: "retail" | "france") => Promise<void>;
+  run: (action: Action, investor: InvestorId, options?: IssueOptions, fund?: "retail" | "us") => Promise<void>;
 }
 
 const DemoContext = createContext<Demo | null>(null);
@@ -104,7 +104,7 @@ export function DemoProvider({ children }: { children: ReactNode }) {
   }, [pathname, refresh, quietRefresh]);
 
   const run = useCallback(
-    async (action: Action, investor: InvestorId, options?: IssueOptions, fund?: "retail" | "france") => {
+    async (action: Action, investor: InvestorId, options?: IssueOptions, fund?: "retail" | "us") => {
       inFlight.current += 1;
       epoch.current += 1;
       setBusy(true);
@@ -123,13 +123,13 @@ export function DemoProvider({ children }: { children: ReactNode }) {
         const data = await response.json();
         if (!response.ok) throw new Error(data.error);
         if (data.state) setState(data.state);
-        (fund === "france" ? setSecondResults : setResults)((current) => ({ ...current, [investor]: { ...data, action } }));
+        (fund === "us" ? setSecondResults : setResults)((current) => ({ ...current, [investor]: { ...data, action } }));
         setError("");
       } catch (e) {
         setError(e instanceof Error ? e.message : "Action failed.");
         // The previous outcome for this investor no longer describes the last
         // thing that happened; leave only the error.
-        (fund === "france" ? setSecondResults : setResults)(({ [investor]: _previous, ...rest }) => rest);
+        (fund === "us" ? setSecondResults : setResults)(({ [investor]: _previous, ...rest }) => rest);
       } finally {
         inFlight.current -= 1;
         epoch.current += 1;

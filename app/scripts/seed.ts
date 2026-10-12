@@ -201,13 +201,13 @@ async function main() {
     return { mint: mint.address, investors };
   }
   const retail = await createFund("DEFR");
-  const second = await createFund("FR", retail.investors);
+  const second = await createFund("US", retail.investors);
   const manifest: Manifest = {
     rpc: endpoint(),
     payerSeed,
     issuerSeed,
     fund: { name: "Meridian EU Retail", symbol: "MERID", mint: retail.mint },
-    secondFund: { name: "Meridian France", symbol: "MFR", mint: second.mint },
+    secondFund: { name: "Meridian US", symbol: "MUS", mint: second.mint },
     secondInvestors: second.investors,
     authority: { name: "KYC Trust Registry", address: authority.address },
     issuer: { name: "Acme KYC", address: issuer.address },
@@ -222,7 +222,7 @@ async function main() {
   await rename(manifestPath() + ".tmp", manifestPath());
   console.log(
     "UC1/UC5 ready: Meridian EU Retail (DE/FR), Lena R. (DE) and Mark T. (US), both " +
-      "frozen and without credentials. Meridian France accepts FR using the same evidence. Acme KYC is an authorized signer of the " +
+      "frozen and without credentials. Meridian US accepts US using the same evidence. Acme KYC is an authorized signer of the " +
       "KYC Trust Registry credential.",
   );
 }

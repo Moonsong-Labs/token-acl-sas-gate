@@ -69,13 +69,13 @@ export async function manifest(): Promise<Manifest> {
   }
   if (data.rpc !== endpoint())
     throw new Error("Demo RPC changed. Run mise run seed again.");
-  if (!data.fund || !data.authority || !data.secondFund || !data.secondInvestors)
+  if (!data.fund || !data.authority || !data.secondFund || !data.secondInvestors || data.secondFund.symbol !== "MUS")
     throw new Error("Demo session is from an older build. Run mise run seed again.");
   return data;
 }
 
 /** Everything the screens show, read from chain state in one pass. */
-async function fundSnapshot(includeHistory = true, fundId: "retail" | "france" = "retail") {
+async function fundSnapshot(includeHistory = true, fundId: "retail" | "us" = "retail") {
   const original = await manifest();
   const m = fundId === "retail" ? original : { ...original, fund: original.secondFund, investors: original.secondInvestors };
   const gate = await account(GATE);
@@ -202,8 +202,8 @@ async function fundSnapshot(includeHistory = true, fundId: "retail" | "france" =
 }
 
 export async function snapshot(includeHistory = true) {
-  const [retail, france] = await Promise.all([fundSnapshot(includeHistory), fundSnapshot(includeHistory, "france")]);
-  return { ...retail, second: france };
+  const [retail, us] = await Promise.all([fundSnapshot(includeHistory), fundSnapshot(includeHistory, "us")]);
+  return { ...retail, second: us };
 }
 
 export type DemoSnapshot = Awaited<ReturnType<typeof snapshot>>;
@@ -271,7 +271,7 @@ export function act(
   id: InvestorId,
   options: IssueOptions = { verified: "today", validity: "year" },
   requestId?: string,
-  fundId: "retail" | "france" = "retail",
+  fundId: "retail" | "us" = "retail",
 ): Promise<ActionResult> {
   const normalizedOptions = action === "issue"
     ? JSON.stringify({ verified: options.verified, validity: options.validity })
@@ -393,7 +393,7 @@ export function act(
         error instanceof Error ? error.message : "unknown error"
       }). Press Refresh before acting again.`;
     }
-    const after = (fundId === "france" ? state?.second : state)?.investors.find((i) => i.id === id);
+    const after = (fundId === "us" ? state?.second : state)?.investors.find((i) => i.id === id);
     if (action === "activate" && after && !after.active)
       return {
         ok: false,
