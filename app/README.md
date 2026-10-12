@@ -1,13 +1,15 @@
 # Admission and credential lifecycle demo
 
-The website demonstrates admission to one private fund, **Meridian EU Retail**
+The website demonstrates admission to two funds, **Meridian EU Retail**
 (MERID), on a local, offline surfnet. It runs the real gate, Solana Attestation
 Service (SAS) and Token ACL programs. Every fact on the screens is read from chain
 state, and every decision is the gate's own.
 
 The fund accepts investors from Germany or France whose KYC was completed within
 the last 365 days. Lena R. has a DE jurisdiction; Mark T. has a US jurisdiction.
-Both begin with frozen fund accounts and no credentials.
+Both begin with frozen accounts in each fund and no credentials. Meridian
+US accepts only United States credentials, with the same registry, schema and 365-day KYC limit.
+Each investor uses one wallet and one credential across both funds.
 
 ## Parties
 
@@ -104,12 +106,13 @@ issuance options. Omitted issuance options normalize to today and one year.
 | `/compliance` | 7 · Sponsor freeze and wallet status controls | Fund operator |
 | `/investor/lena` | 2 · Frozen → 4 · Granted → 5 · Withdrawn, with 8 · Access timeline | Investor |
 | `/investor/mark` | 6 · Access denied | Investor |
+| `/funds` | 9 · Two funds, one credential | Investor |
 | `/status` | Surfnet, programs and session | — |
 
 The numbered screens follow the UC1 mockups. The credential authority screen is
 not in the mockups; it shows the role split above. Withdrawal, compliance
 actions, and the access timeline implement UC2.
-Screen 9, the second fund, belongs to a later use case.
+Screen 9 implements the UC5 second-mint fixture.
 
 The investor screen's check list shows the gate's checks in the order `can_thaw`
 runs them. The gate returns a single error code and stops at the first failure,
@@ -225,6 +228,20 @@ she opens. The invalidation flag is preserved by every write. The script reads i
 and writes it back, so do not run it while a website action is in flight. Only the
 supplied token account freezes; discovering every account of a wallet is out of scope.
 
+## Present UC5
+
+Issue Lena a current credential on `/issuer`, then open `/funds`. Request access
+to Meridian US. The gate denies the DE claim with `Claim · 13` and the
+US account stays frozen. Request access to Meridian EU Retail. The gate
+admits the retail account using the same evidence. Only the jurisdiction
+predicate differs; credential renewal and revocation apply to both funds.
+
+Issue Mark a current US credential, then select Mark on `/funds`. EU Retail
+refuses his claim; Meridian US admits his account using the same evidence.
+
+Run `mise run seed` from `app/` to replace existing sessions, including the
+France-only fixture, with the US-only second fund.
+
 ## Verify
 
 Run these commands from `app/` after building the gate:
@@ -278,9 +295,8 @@ checks, SBF build, and surfnet integration suite.
 
 ## Scope
 
-The demo exposes UC1 admission and UC2 lifecycle controls. It adds no automated
-monitoring, screening-feed integration, policy editing, issuer management, second
-fund, or wallet integration. The operator manually supplies the displayed account
+The demo exposes UC1 admission, UC2 lifecycle controls, the UC3 simulated feed, and the UC5 two-fund fixture. It adds no automated
+monitoring, screening-feed integration, policy editing, issuer management, richer investor classifications, or wallet integration. The operator manually supplies the displayed account
 for freezing. Role screens remain local presentation controls, not production
 authentication. Active accounts are not automatically frozen when their
 credentials later expire.

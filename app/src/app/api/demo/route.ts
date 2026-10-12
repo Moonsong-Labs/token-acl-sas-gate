@@ -40,10 +40,11 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     local(request);
-    const { action, investor, options, requestId } = await request.json();
+    const { action, investor, options, requestId, fund = "retail" } = await request.json();
     const verified = options?.verified ?? "today";
     const validity = options?.validity ?? "year";
     if (
+      !isOneOf(["retail", "us"] as const, fund) ||
       !isOneOf(ACTIONS, action) ||
       !isOneOf(INVESTORS, investor) ||
       !isOneOf(Object.keys(VERIFIED) as IssueOptions["verified"][], verified) ||
@@ -55,7 +56,7 @@ export async function POST(request: NextRequest) {
         { status: 400 },
       );
     return NextResponse.json(
-      await act(action, investor as InvestorId, { verified, validity }, requestId),
+      await act(action, investor as InvestorId, { verified, validity }, requestId, fund),
     );
   } catch (e) {
     return NextResponse.json(

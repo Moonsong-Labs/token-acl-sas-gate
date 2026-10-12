@@ -194,6 +194,74 @@ impl Admission {
         fixture.issue("DE", now - 10, now + 86400);
         fixture
     }
+    /// Create another real mint sharing this fixture's wallet and SAS evidence.
+    pub fn add_fund(&mut self, policy: Policy) {
+        let payer = self.harness.payer().pubkey();
+        let mint_key = Keypair::new();
+        let mint = mint_key.pubkey();
+        let len =
+            ExtensionType::try_calculate_account_len::<Mint>(&[ExtensionType::DefaultAccountState])
+                .unwrap();
+        self.harness
+            .send(
+                &[
+                    solana_system_interface::instruction::create_account(
+                        &payer, &mint, 10_000_000, len as u64, &TOKEN,
+                    ),
+                    initialize_default_account_state(&TOKEN, &mint, &AccountState::Frozen).unwrap(),
+                    token::initialize_mint2(&TOKEN, &mint, &payer, Some(&payer), 6).unwrap(),
+                ],
+                &[self.harness.payer(), &mint_key],
+            )
+            .assert_success();
+        let config = MintConfig::find_pda(&mint).0;
+        self.harness
+            .send(
+                &[
+                    CreateConfig {
+                        payer,
+                        authority: payer,
+                        mint,
+                        mint_config: config,
+                        system_program: SYSTEM,
+                        token_program: TOKEN,
+                    }
+                    .instruction(CreateConfigInstructionArgs {
+                        gating_program: ids::GATE,
+                    }),
+                    TogglePermissionlessInstructions {
+                        authority: payer,
+                        mint_config: config,
+                    }
+                    .instruction(
+                        TogglePermissionlessInstructionsInstructionArgs {
+                            freeze_enabled: false,
+                            thaw_enabled: true,
+                        },
+                    ),
+                ],
+                &[self.harness.payer()],
+            )
+            .assert_success();
+        self.mint = mint;
+        self.policy = policy;
+        self.harness
+            .send(
+                &[self.configure(&payer, &self.policy)],
+                &[self.harness.payer()],
+            )
+            .assert_success();
+        self.token = self.new_token(true);
+        self.harness
+            .send(
+                &[
+                    self.status(&self.investor.pubkey(), None, &payer),
+                    self.status(&self.token, None, &payer),
+                ],
+                &[self.harness.payer()],
+            )
+            .assert_success();
+    }
     pub fn configure(&self, authority: &Pubkey, policy: &Policy) -> Instruction {
         let mut data = vec![0];
         data.extend_from_slice(&policy.encode().unwrap());

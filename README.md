@@ -120,8 +120,14 @@ and only an authorized lift clears the block. An integration test covers the
 authorized and unauthorized paths. Real screening-feed integration is not
 implemented.
 
-**UC4 and UC5 are not implemented.** These are multi-issuer trust tiers and the
-second-mint policy fixture. The schema
+**UC5's second-mint policy fixture is implemented.** Two funds share each
+investor's SAS evidence. Meridian EU Retail accepts DE/FR; Meridian US
+accepts US. Lena's DE credential passes retail and fails US; Mark's US
+credential passes US and fails retail. Policies
+and status records remain independent per mint. The demo presents this at `/funds`.
+
+**Later extensions are not implemented.** These include screening-feed
+integration, multi-issuer trust tiers, and richer investor classifications. The schema
 is a test fixture; no external compliance provider integration or cluster
 deployment is configured. See [docs/USE_CASES.md](docs/USE_CASES.md) and
 [docs/SCOPE.md](docs/SCOPE.md) for the planned scope.
@@ -157,12 +163,12 @@ in [app/README.md](app/README.md).
 ### Mockups
 
 The demo screens follow a set of UI mockups covering the full MVP arc. Screens 1
-to 8 are built. Screen 9, the second fund, describes planned behavior.
+to 8 are built. Screen 9 presents the second fund.
 
 ![Mockup of the screen flow, from fund setup to admission, denial, and the later compliance loop](docs/images/mockups/00-screen-flow.png)
 
 *Mockup: screen flow. Withdrawal, compliance actions, and the access timeline
-are part of UC2. The two-fund screen is a later use case.*
+are part of UC2. The two-fund screen implements the UC5 fixture.*
 
 <details>
 <summary>All mockups</summary>
@@ -178,7 +184,7 @@ are part of UC2. The two-fund screen is a later use case.*
 | ![Mockup: access denied](docs/images/mockups/06-access-denied.png) | 6 · Access denied | Built |
 | ![Mockup: compliance actions](docs/images/mockups/07-compliance-actions.png) | 7 · Compliance actions | Built for UC2; the UC3 feed is a CLI, real feed integration later |
 | ![Mockup: access timeline](docs/images/mockups/08-access-timeline.png) | 8 · Access timeline | Built |
-| ![Mockup: two funds, one credential](docs/images/mockups/09-two-funds-one-credential.png) | 9 · Two funds, one credential | Later (UC5) |
+| ![Mockup: two funds, one credential](docs/images/mockups/09-two-funds-one-credential.png) | 9 · Two funds, one credential | Built for UC5 |
 
 </details>
 

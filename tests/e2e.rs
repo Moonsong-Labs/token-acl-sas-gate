@@ -1183,3 +1183,65 @@ async fn uc3_sanctions_hit_blocks_and_freezes_until_authorized_review() {
     assert_eq!(f.wallet_flags(), [0, 1]);
     gate_denied(&f.send_thaw(), GateError::Invalidated);
 }
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "builds the program with cargo build-sbf"]
+async fn uc5_shared_evidence_and_independent_mint_policies() {
+    use support::admission::{Admission, list_pda, policy_pda, status_pda};
+    let mut f = Admission::start().await;
+    let payer = f.harness.payer().pubkey();
+    let first_mint = f.mint;
+    let first_token = f.token;
+    let evidence_before = f.harness.rpc().get_account(&f.evidence).unwrap().data;
+    f.send_thaw().assert_success();
+    assert_eq!(f.token_state(), 1);
+    let mut second_policy = f.policy.clone();
+    second_policy.jurisdictions = vec![*b"US"];
+    f.add_fund(second_policy);
+    let second_mint = f.mint;
+    let second_token = f.token;
+    assert_ne!(policy_pda(&first_mint), policy_pda(&second_mint));
+    assert_ne!(list_pda(&first_mint), list_pda(&second_mint));
+    assert_ne!(
+        status_pda(&first_mint, &f.investor.pubkey()),
+        status_pda(&second_mint, &f.investor.pubkey())
+    );
+    gate_denied(&f.send_thaw(), doors_of_durin::GateError::Claim);
+    assert_eq!(f.token_state(), 2);
+    assert_eq!(
+        f.harness.rpc().get_account(&first_token).unwrap().data[108],
+        1
+    );
+    // A second-fund block cannot affect the first fund's admission.
+    f.harness
+        .send(
+            &[f.status(&f.investor.pubkey(), Some([1, 0]), &payer)],
+            &[f.harness.payer()],
+        )
+        .assert_success();
+    f.mint = first_mint;
+    f.token = first_token;
+    f.freeze();
+    f.send_thaw().assert_success();
+    assert_eq!(f.token_state(), 1);
+    // Updating only the second predicate permits the exact same evidence.
+    f.mint = second_mint;
+    f.token = second_token;
+    f.policy.jurisdictions = vec![*b"DE"];
+    f.harness
+        .send(&[f.configure(&payer, &f.policy)], &[f.harness.payer()])
+        .assert_success();
+    gate_denied(&f.send_thaw(), doors_of_durin::GateError::Blocked);
+    f.harness
+        .send(
+            &[f.status(&f.investor.pubkey(), Some([0, 0]), &payer)],
+            &[f.harness.payer()],
+        )
+        .assert_success();
+    f.send_thaw().assert_success();
+    assert_eq!(f.token_state(), 1);
+    assert_eq!(
+        f.harness.rpc().get_account(&f.evidence).unwrap().data,
+        evidence_before
+    );
+}

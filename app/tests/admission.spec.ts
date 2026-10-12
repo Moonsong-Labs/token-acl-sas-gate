@@ -96,6 +96,42 @@ test("UC1 and UC2: admission, credential lifecycle, sponsor freeze and block pre
   // Screens 3 and 4: issue, then admission. Lena's credential is short-lived so
   // it can lapse after admission, below.
   await issue(page, "lena", "two-minutes");
+  // UC5: the same freshly issued evidence is evaluated under a second mint.
+  const sharedBefore = await (await request.get("/api/demo")).json();
+  expect(sharedBefore.second.investors[0].wallet).toBe(sharedBefore.investors[0].wallet);
+  expect(sharedBefore.second.investors[0].credential).toEqual(sharedBefore.investors[0].credential);
+  expect(sharedBefore.second.fund.policy.credential).toBe(sharedBefore.fund.policy.credential);
+  expect(sharedBefore.second.fund.policy.schema).toBe(sharedBefore.fund.policy.schema);
+  expect(sharedBefore.second.fund.policy.maxAge).toBe(sharedBefore.fund.policy.maxAge);
+  const crossFundId = crypto.randomUUID();
+  const usRequest = { action: "activate", investor: "lena", fund: "us", requestId: crossFundId };
+  const usResult = await request.post("/api/demo", {
+    headers: { origin: "http://127.0.0.1:3300" }, data: usRequest,
+  });
+  expect((await usResult.json()).decision.code).toBe(13);
+  const wrongFundRetry = await request.post("/api/demo", {
+    headers: { origin: "http://127.0.0.1:3300" }, data: { ...usRequest, fund: "retail" },
+  });
+  expect(wrongFundRetry.status()).toBe(400);
+  await page.goto("/funds");
+  await page.getByRole("button", { name: "Request access to Meridian US", exact: true }).click();
+  await expect(page.getByRole("status")).toContainText("Claim · 13");
+  await expect(page.getByTestId("fund-state-1")).toHaveText("Frozen");
+  await expectTransactionLink(page, false);
+  expect(await tokenState(sharedBefore.second.investors[0].token)).toBe(2);
+  await page.getByRole("button", { name: "Request access to Meridian EU Retail", exact: true }).click();
+  await expect(page.getByTestId("fund-state-0")).toHaveText("Active");
+  await expectTransactionLink(page, true);
+  expect(await tokenState(sharedBefore.investors[0].token)).toBe(1);
+  const sharedAfter = await (await request.get("/api/demo")).json();
+  expect(sharedAfter.investors[0].credential).toEqual(sharedBefore.investors[0].credential);
+  // Freeze retail again so the original UC1 walkthrough still requests admission.
+  const frozen = await request.post("/api/demo", {
+    headers: { origin: "http://127.0.0.1:3300" },
+    data: { action: "freeze", investor: "lena" },
+  });
+  expect((await frozen.json()).ok).toBe(true);
+
   const signature = (await (await chainDetails(page)).locator("code").innerText()).trim();
   expect(signature).toMatch(/^[1-9A-HJ-NP-Za-km-z]{64,88}$/);
   await page.goto("/investor/lena");
@@ -132,6 +168,22 @@ test("UC1 and UC2: admission, credential lifecycle, sponsor freeze and block pre
 
   // Screen 6: a genuine, current credential refused on region alone.
   await issue(page, "mark");
+  await page.goto("/funds");
+  await page.getByLabel("Compare access for").selectOption("mark");
+  await page.getByRole("button", { name: "Request access to Meridian EU Retail", exact: true }).click();
+  await expect(page.getByRole("status")).toContainText("Claim · 13");
+  await expect(page.getByTestId("fund-state-0")).toHaveText("Frozen");
+  await page.getByRole("button", { name: "Request access to Meridian US", exact: true }).click();
+  await expect(page.getByTestId("fund-state-1")).toHaveText("Active");
+  await expectTransactionLink(page, true);
+  const markFunds = await (await request.get("/api/demo")).json();
+  expect(markFunds.second.investors[1].credential).toEqual(markFunds.investors[1].credential);
+  expect(await tokenState(markFunds.investors[1].token)).toBe(2);
+  expect(await tokenState(markFunds.second.investors[1].token)).toBe(1);
+  await page.screenshot({ path: "/tmp/doors-uc5-desktop.png", fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({ path: "/tmp/doors-uc5-phone.png", fullPage: true });
+  await page.setViewportSize({ width: 1280, height: 720 });
   await page.goto("/investor/mark");
   await page.getByRole("button", { name: "Request access" }).click();
   await expect(page.getByRole("status")).toContainText("Region not accepted");
@@ -305,7 +357,7 @@ test("UC1 and UC2: admission, credential lifecycle, sponsor freeze and block pre
   expect(restored.investors[0].walletStatus).toEqual({ blocked: false, invalidated: false });
   await page.screenshot({ path: "test-results/uc2-restored.png", fullPage: true });
 
-  const paths = ["/compliance", "/", "/operator", "/authority", "/issuer", "/investor/lena", "/investor/mark", "/status"];
+  const paths = ["/funds", "/compliance", "/", "/operator", "/authority", "/issuer", "/investor/lena", "/investor/mark", "/status"];
   for (const width of [320, 360, 390]) {
     await page.setViewportSize({ width, height: 844 });
     for (const path of paths) {

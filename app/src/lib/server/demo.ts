@@ -44,6 +44,8 @@ export type Manifest = {
   /** Acme KYC: an authorized signer of the credential. */
   issuerSeed: string;
   fund: { name: string; symbol: string; mint: Address };
+  secondFund: Manifest["fund"];
+  secondInvestors: Manifest["investors"];
   /** The credential authority. Its key is not stored; nothing here signs as it. */
   authority: { name: string; address: Address };
   issuer: { name: string; address: Address };
@@ -67,14 +69,15 @@ export async function manifest(): Promise<Manifest> {
   }
   if (data.rpc !== endpoint())
     throw new Error("Demo RPC changed. Run mise run seed again.");
-  if (!data.fund || !data.authority)
+  if (!data.fund || !data.authority || !data.secondFund || !data.secondInvestors || data.secondFund.symbol !== "MUS")
     throw new Error("Demo session is from an older build. Run mise run seed again.");
   return data;
 }
 
 /** Everything the screens show, read from chain state in one pass. */
-export async function snapshot(includeHistory = true) {
-  const m = await manifest();
+async function fundSnapshot(includeHistory = true, fundId: "retail" | "us" = "retail") {
+  const original = await manifest();
+  const m = fundId === "retail" ? original : { ...original, fund: original.secondFund, investors: original.secondInvestors };
   const gate = await account(GATE);
   if (!gate?.executable)
     throw new Error("Gate is not deployed. Run mise run seed.");
@@ -198,6 +201,11 @@ export async function snapshot(includeHistory = true) {
   };
 }
 
+export async function snapshot(includeHistory = true) {
+  const [retail, us] = await Promise.all([fundSnapshot(includeHistory), fundSnapshot(includeHistory, "us")]);
+  return { ...retail, second: us };
+}
+
 export type DemoSnapshot = Awaited<ReturnType<typeof snapshot>>;
 
 /** How long ago the issuer says KYC was completed. */
@@ -248,7 +256,7 @@ let pending: Promise<unknown> = Promise.resolve();
  */
 const outcomes = new Map<
   string,
-  { action: string; id: InvestorId; options: string; result: Promise<ActionResult> }
+  { action: string; id: InvestorId; fund: string; options: string; result: Promise<ActionResult> }
 >();
 const REMEMBERED = 500;
 
@@ -263,6 +271,7 @@ export function act(
   id: InvestorId,
   options: IssueOptions = { verified: "today", validity: "year" },
   requestId?: string,
+  fundId: "retail" | "us" = "retail",
 ): Promise<ActionResult> {
   const normalizedOptions = action === "issue"
     ? JSON.stringify({ verified: options.verified, validity: options.validity })
@@ -271,12 +280,13 @@ export function act(
   if (seen) {
     // A retry is the same request: replaying another action's outcome under it
     // would be wrong, so a reused ID is refused.
-    if (seen.action !== action || seen.id !== id || seen.options !== normalizedOptions)
+    if (seen.action !== action || seen.id !== id || seen.fund !== fundId || seen.options !== normalizedOptions)
       throw new Error("This request ID was already used for a different action.");
     return seen.result;
   }
   const run = pending.then(async () => {
-    const m = await manifest();
+    const original = await manifest();
+    const m = fundId === "retail" ? original : { ...original, fund: original.secondFund, investors: original.secondInvestors };
     const investor = m.investors[id];
     const allocationFile = `${manifestPath()}.${investor.token}.allocation.json`;
     if (action === "allocate") {
@@ -284,7 +294,7 @@ export function act(
       if (unresolved) return uncertainAllocation(unresolved, await reread());
     }
     // History is presentation data. Do not query it before submitting an action.
-    const before = await snapshot(false);
+    const before = await fundSnapshot(false, fundId);
     const current = before.investors.find((i) => i.id === id)!;
     if (action === "issue" && current.credential)
       throw new Error(
@@ -383,7 +393,7 @@ export function act(
         error instanceof Error ? error.message : "unknown error"
       }). Press Refresh before acting again.`;
     }
-    const after = state?.investors.find((i) => i.id === id);
+    const after = (fundId === "us" ? state?.second : state)?.investors.find((i) => i.id === id);
     if (action === "activate" && after && !after.active)
       return {
         ok: false,
@@ -418,7 +428,7 @@ export function act(
   });
   pending = run.catch(() => undefined);
   if (requestId) {
-    outcomes.set(requestId, { action, id, options: normalizedOptions, result: run });
+    outcomes.set(requestId, { action, id, fund: fundId, options: normalizedOptions, result: run });
     // Keep the map bounded; Map iterates oldest first.
     if (outcomes.size > REMEMBERED) outcomes.delete(outcomes.keys().next().value!);
   }
