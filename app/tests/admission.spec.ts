@@ -1,7 +1,7 @@
 import { getAddressDecoder } from "@solana/kit";
 import { test, expect, type Page } from "@playwright/test";
 
-// UC1 in a browser, against the real gate on an isolated surfnet
+// credential admission in a browser, against the real gate on an isolated surfnet
 // (scripts/test-server.ts). Every outcome asserted here is the gate's, read
 // back from chain state; the screens do not simulate a decision.
 
@@ -55,7 +55,7 @@ async function issue(page: Page, who: "lena" | "mark", validity = "year") {
   await expectTransactionLink(page, true);
 }
 
-test("UC1 and UC2: admission, credential lifecycle, sponsor freeze and block precedence", async ({
+test("admission, credential lifecycle, sponsor freeze and block precedence", async ({
   page,
   request,
 }) => {
@@ -96,7 +96,7 @@ test("UC1 and UC2: admission, credential lifecycle, sponsor freeze and block pre
   // Screens 3 and 4: issue, then admission. Lena's credential is short-lived so
   // it can lapse after admission, below.
   await issue(page, "lena", "two-minutes");
-  // UC5: the same freshly issued evidence is evaluated under a second mint.
+  // per-mint policy: the same freshly issued evidence is evaluated under a second mint.
   const sharedBefore = await (await request.get("/api/demo")).json();
   expect(sharedBefore.second.investors[0].wallet).toBe(sharedBefore.investors[0].wallet);
   expect(sharedBefore.second.investors[0].credential).toEqual(sharedBefore.investors[0].credential);
@@ -125,7 +125,7 @@ test("UC1 and UC2: admission, credential lifecycle, sponsor freeze and block pre
   expect(await tokenState(sharedBefore.investors[0].token)).toBe(1);
   const sharedAfter = await (await request.get("/api/demo")).json();
   expect(sharedAfter.investors[0].credential).toEqual(sharedBefore.investors[0].credential);
-  // Freeze retail again so the original UC1 walkthrough still requests admission.
+  // Freeze retail again so the original credential admission walkthrough still requests admission.
   const frozen = await request.post("/api/demo", {
     headers: { origin: "http://127.0.0.1:3300" },
     data: { action: "freeze", investor: "lena" },
@@ -180,9 +180,9 @@ test("UC1 and UC2: admission, credential lifecycle, sponsor freeze and block pre
   expect(markFunds.second.investors[1].credential).toEqual(markFunds.investors[1].credential);
   expect(await tokenState(markFunds.investors[1].token)).toBe(2);
   expect(await tokenState(markFunds.second.investors[1].token)).toBe(1);
-  await page.screenshot({ path: "/tmp/doors-uc5-desktop.png", fullPage: true });
+  await page.screenshot({ path: "/tmp/doors-funds-desktop.png", fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.screenshot({ path: "/tmp/doors-uc5-phone.png", fullPage: true });
+  await page.screenshot({ path: "/tmp/doors-funds-phone.png", fullPage: true });
   await page.setViewportSize({ width: 1280, height: 720 });
   await page.goto("/investor/mark");
   await page.getByRole("button", { name: "Request access" }).click();
@@ -216,7 +216,7 @@ test("UC1 and UC2: admission, credential lifecycle, sponsor freeze and block pre
   expect(await tokenState(state.investors[1].token)).toBe(2);
   // Two clicks and one request sent twice: exactly three allocations.
   expect(state.investors[0].balance).toBe(75_000);
-  await page.screenshot({ path: "test-results/uc1-denial.png", fullPage: true });
+  await page.screenshot({ path: "test-results/admission-denial.png", fullPage: true });
 
   // Admission is a past decision. Once Lena's credential lapses her account
   // stays active, and the screen must say so rather than imply compliance.
@@ -273,7 +273,7 @@ test("UC1 and UC2: admission, credential lifecycle, sponsor freeze and block pre
   await expect(page.getByText("125,000")).toBeVisible();
   await page.unroute("**/api/demo");
 
-  // UC2: expiry did not freeze Lena. The sponsor now enforces it.
+  // credential lifecycle: expiry did not freeze Lena. The sponsor now enforces it.
   const compliance = async () => {
     await page.goto("/compliance");
 
@@ -355,7 +355,7 @@ test("UC1 and UC2: admission, credential lifecycle, sponsor freeze and block pre
   expect(restored.investors[0].balance).toBe(125_000);
   expect(await tokenState(restored.investors[0].token)).toBe(1);
   expect(restored.investors[0].walletStatus).toEqual({ blocked: false, invalidated: false });
-  await page.screenshot({ path: "test-results/uc2-restored.png", fullPage: true });
+  await page.screenshot({ path: "test-results/lifecycle-restored.png", fullPage: true });
 
   const paths = ["/funds", "/compliance", "/", "/operator", "/authority", "/issuer", "/investor/lena", "/investor/mark", "/status"];
   for (const width of [320, 360, 390]) {
@@ -369,7 +369,7 @@ test("UC1 and UC2: admission, credential lifecycle, sponsor freeze and block pre
       ).toBeLessThanOrEqual(width);
     }
   }
-  await page.screenshot({ path: "test-results/uc1-mobile.png", fullPage: true });
+  await page.screenshot({ path: "test-results/admission-mobile.png", fullPage: true });
 
   const unsupported = await request.post("/api/demo", {
     headers: { Origin: "http://127.0.0.1:3300" },
@@ -384,7 +384,7 @@ test("UC1 and UC2: admission, credential lifecycle, sponsor freeze and block pre
 });
 
 for (const method of ["getSignaturesForAddress", "getTransaction"]) {
-  test(`UC2 enforcement remains available when ${method} fails`, async ({ page, request }) => {
+  test(`credential lifecycle enforcement remains available when ${method} fails`, async ({ page, request }) => {
     const action = async (name: string) => {
       const response = await request.post("/api/demo", {
         headers: { Origin: "http://127.0.0.1:3300" },
@@ -435,7 +435,7 @@ for (const method of ["getSignaturesForAddress", "getTransaction"]) {
       await expect(page.getByTestId("timeline-unavailable")).toBeVisible();
       const fault = await (await request.get("http://127.0.0.1:19001/fault")).json();
       expect(fault.failures).toBeGreaterThan(0);
-      await page.screenshot({ path: `test-results/uc2-history-unavailable-${method}.png`, fullPage: true });
+      await page.screenshot({ path: `test-results/lifecycle-history-unavailable-${method}.png`, fullPage: true });
     } finally {
       await request.post("http://127.0.0.1:19001/fault", { data: { method: null } });
     }

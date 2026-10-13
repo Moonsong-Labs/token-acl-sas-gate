@@ -1,4 +1,4 @@
-// A fresh local UC1 session. Only funding and program deployment use cheatcodes.
+// A fresh local credential admission session. Only funding and program deployment use cheatcodes.
 // Fund, policy, status records and token accounts are created by real instructions.
 //
 // Four separate parties, following the SAS model:
@@ -91,7 +91,7 @@ async function main() {
       bytes(
         [1],
         str("eligibility"),
-        str("UC1 demo fixture"),
+        str("credential admission demo fixture"),
         str(Buffer.from([12, 8])),
         num(2, 4),
         str("jurisdiction"),
@@ -221,7 +221,7 @@ async function main() {
   });
   await rename(manifestPath() + ".tmp", manifestPath());
   console.log(
-    "UC1/UC5 ready: Meridian EU Retail (DE/FR), Lena R. (DE) and Mark T. (US), both " +
+    "Demo ready: Meridian EU Retail (DE/FR), Lena R. (DE) and Mark T. (US), both " +
       "frozen and without credentials. Meridian US accepts US using the same evidence. Acme KYC is an authorized signer of the " +
       "KYC Trust Registry credential.",
   );

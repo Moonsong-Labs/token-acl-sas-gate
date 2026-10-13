@@ -24,7 +24,7 @@ description = "Start an offline local surfnet, with Surfpool Studio on :18488"
 run = "npm run surfnet"
 
 [tasks.seed]
-description = "Deploy pinned programs and create a fresh UC1 demo session"
+description = "Deploy pinned programs and create a fresh credential admission demo session"
 run = "npm run seed"
 
 [tasks.screen]
@@ -44,5 +44,5 @@ description = "Check the demo TypeScript"
 run = "npm run typecheck"
 
 [tasks.e2e]
-description = "Build the website and test UC1 to UC3 against an isolated surfnet"
+description = "Build the website and test admission, lifecycle, and screening against an isolated surfnet"
 run = "npm run test:e2e"

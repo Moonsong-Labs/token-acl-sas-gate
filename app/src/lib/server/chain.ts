@@ -1,5 +1,5 @@
 // Server-side wire adapter for the pinned programs. Encodings mirror the Rust
-// UC1 fixture; browser tests execute these instructions against their real SBF.
+// credential admission fixture; browser tests execute these instructions against their real SBF.
 import {
   address,
   getAddressEncoder,
@@ -288,7 +288,7 @@ export async function ledgerNow(): Promise<bigint> {
 /**
  * SAS `CreateAttestation`, signed by an authorized signer of the credential,
  * i.e. an issuer the credential authority registered. The subject is bound
- * through `nonce = wallet`; the claim is the UC1 schema: `jurisdiction`
+ * through `nonce = wallet`; the claim is the credential admission schema: `jurisdiction`
  * (String) then `verified_at` (i64).
  */
 export async function issue(

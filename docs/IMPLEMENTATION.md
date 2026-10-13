@@ -1,6 +1,6 @@
 # Implementation Appendix — Token ACL Gate Program (rev 3)
 
-The implemented UC1 wire protocol and verification coverage are in `ADMISSION.md`.
+The implemented credential admission wire protocol and verification coverage are in `ADMISSION.md`.
 
 Companion to `SCOPE.md` (scope, MVP boundary, success criteria) and `USE_CASES.md` (business  
 cases). Toolchain, gate predicate, fixtures, test matrix, build order and risks live here.
@@ -319,7 +319,7 @@ different regulatory questions and are not interchangeable evidence.
     expiry units and boundary, revocation/closure semantics, and renewal/reissuance behaviour;  
     record measured decode costs. Findings are labelled as findings, assumptions as assumptions.
     **Status: the SAS half is DONE** — see `SAS_SPIKE.md` (layout, lifecycle, decoder + live
-    probe). The UC1 build now verifies the pinned Token ACL layout, discovery, authority, and thaw path; see `ADMISSION.md`.
+    probe). The credential admission build now verifies the pinned Token ACL layout, discovery, authority, and thaw path; see `ADMISSION.md`.
     
 2.  **Plumbing stub.** Mint + `create-config` + our extra-metas setup + enable permissionless  
     thaw, with a **permissive stub gate** that accepts a marker. Labelled a stub: it proves  

@@ -1,7 +1,7 @@
 import { test, expect, type APIRequestContext } from "@playwright/test";
 import { execFile } from "node:child_process";
 
-// UC3: runs the simulated screening feed (scripts/screening.ts) against the
+// screening blocks: runs the simulated screening feed (scripts/screening.ts) against the
 // test surfnet and checks its effect through the demo API. A hit adds a
 // compliance hold and freezes the account in one transaction, a delisting sends
 // nothing, only a lift clears the hold, and every write keeps the wallet's
@@ -69,7 +69,7 @@ async function admitted(request: APIRequestContext) {
   if (!(await lena(request)).active) expect((await act(request, "activate")).ok).toBe(true);
 }
 
-test("UC3: a screening hit holds and freezes until an authorized lift", async ({ request }) => {
+test("screening blocks: a screening hit holds and freezes until an authorized lift", async ({ request }) => {
   await admitted(request);
 
   // A hit adds the hold and freezes the active account in one transaction.

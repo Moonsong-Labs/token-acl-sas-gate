@@ -1,7 +1,7 @@
 // Own an isolated test surfnet and Next server; do not replace the presenter's session.
 //
 // The app reaches the surfnet through two chained proxies: a history-failure
-// proxy (19001) that the UC2 timeline tests drive via /fault, which forwards to
+// proxy (19001) that the credential lifecycle timeline tests drive via /fault, which forwards to
 // the fault proxy on FAULT_PORT that the resilience tests drive via /__faults
 // (see `faults` below). Tests that read chain state directly still use SURFNET.
 import { spawn, type ChildProcess } from "node:child_process";

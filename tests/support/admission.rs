@@ -1,4 +1,4 @@
-//! Real SAS issuance and Token-2022/ACL setup for UC1.
+//! Real SAS issuance and Token-2022/ACL setup for credential admission.
 use super::{Harness, Outcome, ids, sas_ix};
 use doors_of_durin::{metas, state::Policy};
 use solana_instruction::{AccountMeta as Meta, Instruction};

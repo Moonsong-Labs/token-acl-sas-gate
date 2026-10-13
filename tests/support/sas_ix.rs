@@ -243,8 +243,8 @@ pub fn tokenized_attestation(
     issue.data[0] = 10;
     for value in [
         b"Aster jurisdiction".as_slice(),
-        b"https://example.invalid/uc1",
-        b"UC1",
+        b"https://example.invalid/admission",
+        b"ADMIT",
     ] {
         push_len_prefixed(&mut issue.data, value);
     }
