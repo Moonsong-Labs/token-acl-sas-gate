@@ -1,6 +1,6 @@
-# UC1 credential admission
+# Credential admission credential admission
 
-The gate implements the first private-fund admission use case. It authorizes
+The gate checks credential-based admission. It authorizes
 permissionless thaw through Token ACL after checking current SAS evidence against
 the mint's policy. It does not check transfers or automatically freeze accounts.
 Token ACL's permissioned administrative thaw remains available.

@@ -322,7 +322,7 @@ fn gate_denied(outcome: &Outcome, error: doors_of_durin::GateError) {
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "builds the program with cargo build-sbf; run via `mise run integration`"]
-async fn uc1_admission_and_policy_governance() {
+async fn admission_and_policy_governance() {
     use doors_of_durin::GateError;
     use support::admission::{Admission, list_pda, policy_pda, status_pda};
     let f = Admission::start().await;
@@ -332,7 +332,7 @@ async fn uc1_admission_and_policy_governance() {
     outcome.assert_success();
     assert!(outcome.reached(&ids::GATE));
     println!(
-        "UC1 admission gate CU: {:?}; ACL total CU: {:?}; instruction bytes: {}; metas bytes: {}",
+        "Admission gate CU: {:?}; ACL total CU: {:?}; instruction bytes: {}; metas bytes: {}",
         outcome.compute_units_for(&ids::GATE),
         outcome.compute_units_for(&ids::TOKEN_ACL.id),
         f.thaw(payer).data.len(),
@@ -454,7 +454,7 @@ async fn uc1_admission_and_policy_governance() {
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "builds the program with cargo build-sbf; run via `mise run integration`"]
-async fn uc1_fail_closed_account_matrix() {
+async fn fail_closed_account_matrix() {
     use doors_of_durin::GateError;
     use support::admission::{Admission, SYSTEM, list_pda, policy_pda, status_pda};
     let mut f = Admission::start().await;
@@ -516,7 +516,7 @@ async fn uc1_fail_closed_account_matrix() {
     for (name, owner, bytes, error) in cases {
         f.replace(f.evidence, owner, bytes);
         let outcome = f.send_thaw();
-        println!("UC1 {name}: {:?}", outcome.error);
+        println!("credential admission {name}: {:?}", outcome.error);
         gate_denied(&outcome, error);
         assert_eq!(f.token_state(), 2);
     }
@@ -532,7 +532,7 @@ async fn uc1_fail_closed_account_matrix() {
             "omitting account {index} admitted: {outcome:?}"
         );
         println!(
-            "UC1 omitted account {index}: gate reached {}",
+            "credential admission omitted account {index}: gate reached {}",
             outcome.reached(&ids::GATE)
         );
         assert_eq!(f.token_state(), 2);
@@ -579,7 +579,7 @@ async fn uc1_fail_closed_account_matrix() {
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "builds the program with cargo build-sbf; run via `mise run integration`"]
-async fn uc1_clock_boundaries_and_discovery() {
+async fn clock_boundaries_and_discovery() {
     use doors_of_durin::GateError;
     use solana_rpc_client_types::request::RpcRequest;
     use solana_transaction::Transaction;
@@ -690,7 +690,7 @@ async fn uc1_clock_boundaries_and_discovery() {
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "builds the program with cargo build-sbf; run via `mise run integration`"]
-async fn uc1_tokenized_attestation_recipient_does_not_restrict_the_fund() {
+async fn tokenized_attestation_recipient_does_not_restrict_the_fund() {
     use support::admission::{Admission, claim};
     let f = Admission::start().await;
     f.revoke();
@@ -733,7 +733,7 @@ async fn uc1_tokenized_attestation_recipient_does_not_restrict_the_fund() {
 /// Aster Identity governs schemas; Aster Verification Desk only issues evidence.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "builds the program with cargo build-sbf; run via `mise run integration`"]
-async fn uc1_separates_credential_authority_and_attestation_issuer() {
+async fn separates_credential_authority_and_attestation_issuer() {
     use support::admission::{Admission, claim};
     let f = Admission::start().await;
     let payer = f.harness.payer().pubkey();
@@ -800,7 +800,7 @@ async fn uc1_separates_credential_authority_and_attestation_issuer() {
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "builds the program with cargo build-sbf; run via `mise run integration`"]
-async fn uc1_rejects_genuine_but_unaccepted_evidence() {
+async fn rejects_genuine_but_unaccepted_evidence() {
     use support::admission::{Admission, claim};
     let f = Admission::start().await;
     let payer = f.harness.payer().pubkey();
@@ -898,7 +898,7 @@ async fn uc1_rejects_genuine_but_unaccepted_evidence() {
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "builds the program with cargo build-sbf; run via `mise run integration`"]
-async fn uc1_governance_follows_authority_rotation_and_blocks_take_precedence() {
+async fn governance_follows_authority_rotation_and_blocks_take_precedence() {
     use doors_of_durin::GateError;
     use support::admission::Admission;
     use token_acl_client::{
@@ -958,11 +958,11 @@ async fn uc1_governance_follows_authority_rotation_and_blocks_take_precedence() 
     gate_denied(&f.send_thaw(), GateError::Claim);
 }
 
-/// UC2 exercises transfers, enforcement on a supplied account, and restoration
+/// credential lifecycle exercises transfers, enforcement on a supplied account, and restoration
 /// with real SAS issuance/closure and real Token ACL instructions.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "builds the program with cargo build-sbf; run via `mise run integration`"]
-async fn uc2_revocation_freeze_renewal_and_block_precedence() {
+async fn revocation_freeze_renewal_and_block_precedence() {
     use doors_of_durin::GateError;
     use spl_token_2022_interface::instruction as token;
     use support::admission::{Admission, TOKEN};
@@ -1074,7 +1074,7 @@ async fn uc2_revocation_freeze_renewal_and_block_precedence() {
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "builds the program with cargo build-sbf; run via `mise run integration`"]
-async fn uc2_wallet_invalidation_survives_reissuance_until_authorized_clear() {
+async fn wallet_invalidation_survives_reissuance_until_authorized_clear() {
     use doors_of_durin::GateError;
     use support::admission::Admission;
     let f = Admission::start().await;
@@ -1105,13 +1105,13 @@ async fn uc2_wallet_invalidation_survives_reissuance_until_authorized_clear() {
     f.send_thaw().assert_success();
 }
 
-/// UC3: a simulated screening feed. A sanctions hit blocks the wallet and
+/// screening blocks: a simulated screening feed. A sanctions hit blocks the wallet and
 /// freezes the supplied token account in one transaction; only an authorized
 /// review lifts the block. A delisting has no instruction (the feed only reports
 /// a review), so `app/tests/screening.spec.ts` covers it through the script.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "builds the program with cargo build-sbf; run via `mise run integration`"]
-async fn uc3_sanctions_hit_blocks_and_freezes_until_authorized_review() {
+async fn sanctions_hit_blocks_and_freezes_until_authorized_review() {
     use doors_of_durin::GateError;
     use support::admission::Admission;
     let f = Admission::start().await;
@@ -1186,7 +1186,7 @@ async fn uc3_sanctions_hit_blocks_and_freezes_until_authorized_review() {
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "builds the program with cargo build-sbf"]
-async fn uc5_shared_evidence_and_independent_mint_policies() {
+async fn shared_evidence_and_independent_mint_policies() {
     use support::admission::{Admission, list_pda, policy_pda, status_pda};
     let mut f = Admission::start().await;
     let payer = f.harness.payer().pubkey();

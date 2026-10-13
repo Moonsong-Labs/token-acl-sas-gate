@@ -10,7 +10,7 @@ that meets the mint's policy.
 
 ![Live demo: Lena R.'s account admitted, with every gate check passed](docs/images/screenshots/06-investor-lena-admitted.png)
 
-*The UC1 demo running against a local surfnet: Lena R.'s account was admitted
+*The demo running against a local surfnet: Lena R.'s account was admitted
 after the gate passed each check, in the order it runs them.*
 
 ## The problem
@@ -93,45 +93,6 @@ A policy accepts the authority's credential, so it accepts evidence from any
 issuer the authority has authorized. The gate does not check which signer
 created the attestation, because SAS supports signer rotation.
 
-## Status
-
-**UC1, credential-based admission to a private fund, is implemented.** The gate
-configures per-mint policies, maintains block and invalidation status records,
-publishes the standard thaw discovery list, and decides permissionless thaw. It
-denies expired, stale, closed (revoked), wrong-schema, wrong-subject,
-wrong-credential, and out-of-region evidence. The integration suite exercises it
-with real SAS issuance and Token ACL thaws on a local surfnet, and the web demo
-in [`app/`](app/README.md) presents the same flow.
-
-**UC2, the credential lifecycle, is implemented.** The demo supports native SAS
-revocation, atomic close-and-reissue renewal, sponsor freeze of a supplied token
-account, compliance hold and invalidation controls, and re-admission. A recent
-transaction timeline records withdrawal and restoration from chain history.
-Integration tests prove that revocation alone permits transfers, sponsor freeze
-stops them while retaining the balance, and valid renewal restores admission
-only after compliance holds and wallet invalidation are cleared.
-
-**UC3, screening blocks, is implemented as a simulated feed.** The gate's
-authorized status instruction adds and removes an explicit wallet block, checked
-before credential validity and immune to renewal. `mise run screen` (from `app/`)
-plays the feed: a sanctions hit blocks the wallet and freezes the supplied token
-account in one transaction, a delisting writes nothing and only flags a review,
-and only an authorized lift clears the block. An integration test covers the
-authorized and unauthorized paths. Real screening-feed integration is not
-implemented.
-
-**UC5's second-mint policy fixture is implemented.** Two funds share each
-investor's SAS evidence. Meridian EU Retail accepts DE/FR; Meridian US
-accepts US. Lena's DE credential passes retail and fails US; Mark's US
-credential passes US and fails retail. Policies
-and status records remain independent per mint. The demo presents this at `/funds`.
-
-**Later extensions are not implemented.** These include screening-feed
-integration, multi-issuer trust tiers, and richer investor classifications. The schema
-is a test fixture; no external compliance provider integration or cluster
-deployment is configured. See [docs/USE_CASES.md](docs/USE_CASES.md) and
-[docs/SCOPE.md](docs/SCOPE.md) for the planned scope.
-
 ## Demo
 
 The demo website runs the real gate, SAS, and Token ACL programs on an offline
@@ -160,44 +121,16 @@ in [app/README.md](app/README.md).
 
 </details>
 
-### Mockups
-
-The demo screens follow a set of UI mockups covering the full MVP arc. Screens 1
-to 8 are built. Screen 9 presents the second fund.
-
-![Mockup of the screen flow, from fund setup to admission, denial, and the later compliance loop](docs/images/mockups/00-screen-flow.png)
-
-*Mockup: screen flow. Withdrawal, compliance actions, and the access timeline
-are part of UC2. The two-fund screen implements the UC5 fixture.*
-
-<details>
-<summary>All mockups</summary>
-
-| Mockup | Title | Status |
-| --- | --- | --- |
-| ![Mockup: overview by role](docs/images/mockups/00-overview.png) | Overview | Built |
-| ![Mockup: fund setup](docs/images/mockups/01-fund-setup.png) | 1 · Fund setup | Built |
-| ![Mockup: account locked](docs/images/mockups/02-account-locked.png) | 2 · Account locked | Built |
-| ![Mockup: issue and withdraw credential](docs/images/mockups/03-issue-and-withdraw-credential.png) | 3 · Issue & withdraw credential | Built |
-| ![Mockup: access granted](docs/images/mockups/04-access-granted.png) | 4 · Access granted | Built |
-| ![Mockup: access withdrawn](docs/images/mockups/05-access-withdrawn.png) | 5 · Access withdrawn | Built |
-| ![Mockup: access denied](docs/images/mockups/06-access-denied.png) | 6 · Access denied | Built |
-| ![Mockup: compliance actions](docs/images/mockups/07-compliance-actions.png) | 7 · Compliance actions | Built for UC2; the UC3 feed is a CLI, real feed integration later |
-| ![Mockup: access timeline](docs/images/mockups/08-access-timeline.png) | 8 · Access timeline | Built |
-| ![Mockup: two funds, one credential](docs/images/mockups/09-two-funds-one-credential.png) | 9 · Two funds, one credential | Built for UC5 |
-
-</details>
-
 ## Documentation
 
 | Document | Contents |
 | --- | --- |
-| [docs/ADMISSION.md](docs/ADMISSION.md) | UC1 protocol reference: fund setup steps, policy and evidence rules, PDAs and account layouts, instructions, and error codes |
+| [docs/ADMISSION.md](docs/ADMISSION.md) | Credential admission protocol reference: fund setup steps, policy and evidence rules, PDAs and account layouts, instructions, and error codes |
 | [docs/SCOPE.md](docs/SCOPE.md) | Project goal, what the primitive does and does not do, MVP boundary, and success criteria |
-| [docs/USE_CASES.md](docs/USE_CASES.md) | Business use cases UC1 to UC6, the reference model, the MVP demo arc, and the data policy |
+| [docs/USE_CASES.md](docs/USE_CASES.md) | Business scenarios, reference model, demo flow, and data policy |
 | [docs/IMPLEMENTATION.md](docs/IMPLEMENTATION.md) | Toolchain pins, discovery-list design, the gate predicate, test matrix, build order, and risks |
 | [docs/SAS_SPIKE.md](docs/SAS_SPIKE.md) | SAS findings: account layouts, expiry and revocation semantics, authenticity checks, and the subject-binding decision |
-| [app/README.md](app/README.md) | The UC1 and UC2 web demo: parties, local setup, screens, presentation script, and browser tests |
+| [app/README.md](app/README.md) | The admission and credential lifecycle web demo: parties, local setup, screens, presentation script, and browser tests |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Prerequisites, required checks, Git hooks, review and landing, and commit conventions |
 
 ## Prerequisites
@@ -288,7 +221,7 @@ the panic names solana-rpc-client rather than the attribute.
 
 The harness deploys the gate at a fixed test-only address so PDAs derived under
 it stay reproducible across runs. It holds no wallet and does not touch your
-Solana CLI configuration. Executable instruction builders for the complete UC1
+Solana CLI configuration. Executable instruction builders for the complete
 setup and admission flow are in `tests/support/admission.rs`.
 
 ## Layout
@@ -298,17 +231,48 @@ setup and admission flow are in `tests/support/admission.rs`.
 - `src/metas.rs`: standard Token ACL account discovery list.
 - `tests/e2e.rs`: opt-in surfnet integration suite.
 - `tests/support/`: harness — surfnet lifecycle, cheatcodes, outcome
-  attribution, pinned program IDs, SAS instruction builders, and UC1 setup.
+  attribution, pinned program IDs, SAS instruction builders, and admission setup.
 - `tests/fixtures/programs/`: pinned SAS and Token ACL binaries.
 - `app/`: the admission and lifecycle demo website, with its own `mise.toml`; see
   [app/README.md](app/README.md).
-- `docs/`: scope, use cases, implementation notes, SAS findings, the UC1
+- `docs/`: scope, use cases, implementation notes, SAS findings, the admission
   protocol reference, and the README images.
 - `Cargo.toml`: library configuration and Pinocchio dependency.
 - `mise.toml`: pinned tools, SBF compiler version, and development tasks.
 
-The `no-entrypoint` feature allows other crates to depend on the processor
-without exporting the Solana entrypoint.
+## Reuse the gate in another project
+
+The gate is independent of the demo website and its fixture wallets. Build it
+with `mise run build`, deploy `target/deploy/doors_of_durin.so` at your chosen
+program address, and configure each mint through Token ACL. Derive gate PDAs
+with that deployment address. One deployment can serve multiple mints, each
+with its own policy and status records.
+
+Follow [Configure a fund](docs/ADMISSION.md#configure-a-fund) for mint setup and
+[the protocol reference](docs/ADMISSION.md) for instruction payloads, account
+layouts, discovery, and error codes. The instruction builders in
+`tests/support/admission.rs` are executable examples, not a published client SDK.
+
+To use the processor and public state types from another Rust crate, add a Git
+dependency pinned to a reviewed commit:
+
+```toml
+[dependencies]
+doors-of-durin = { git = "https://github.com/Moonsong-Labs/doors-of-durin", rev = "<reviewed-commit-sha>", features = ["no-entrypoint"] }
+```
+
+`no-entrypoint` suppresses the Solana entrypoint export and leaves
+`doors_of_durin::process_instruction` available. An embedding program must pass
+its own program address and configure Token ACL to select that address.
+
+The gate uses the fixed SAS, Token ACL, and Token-2022 program IDs exported as
+`SAS`, `ACL`, and `TOKEN` in `src/lib.rs`. Those programs must be available on
+the target cluster. Policies can select different SAS credentials and schemas,
+but accepted schemas must use the exact `jurisdiction` and `verified_at` fields
+specified in [Policy and evidence](docs/ADMISSION.md#policy-and-evidence).
+Other claim layouts or upstream program IDs require code changes. Existing
+thawed accounts still require operator freezing when their evidence expires or
+is revoked; the gate checks evidence only on permissionless thaw.
 
 ## License
 

@@ -9,7 +9,7 @@ import { short, useDemo } from "@/lib/client";
  * The SAS credential authority. In the SAS model it is independent of both the
  * funds and the issuers: it owns the credential, creates its schema, and
  * registers issuers as the credential's authorized signers. Read-only here —
- * nothing in UC1 changes the issuer set.
+ * nothing in credential admission changes the issuer set.
  */
 export default function AuthorityScreen() {
   const { state } = useDemo();

@@ -30,7 +30,7 @@ The server keeps the operator and issuer keys so it can relay their actions.
 This follows the [SAS data flow](https://solana.com/docs/tools/attestations/overview#data-flow).
 SAS itself enforces the split: the issuer cannot create schemas, and the
 authority is not an authorized issuer, so it cannot sign attestations.
-`uc1_separates_credential_authority_and_attestation_issuer` in `tests/e2e.rs`
+`separates_credential_authority_and_attestation_issuer` in `tests/e2e.rs`
 checks both against the pinned SAS program.
 
 Sessions seeded before this role separation must be reseeded with
@@ -109,10 +109,10 @@ issuance options. Omitted issuance options normalize to today and one year.
 | `/funds` | 9 · Two funds, one credential | Investor |
 | `/status` | Surfnet, programs and session | — |
 
-The numbered screens follow the UC1 mockups. The credential authority screen is
+The numbered screens follow the credential admission mockups. The credential authority screen is
 not in the mockups; it shows the role split above. Withdrawal, compliance
-actions, and the access timeline implement UC2.
-Screen 9 implements the UC5 second-mint fixture.
+actions, and the access timeline implement the credential lifecycle.
+Screen 9 shows independent policies for two mints.
 
 The investor screen's check list shows the gate's checks in the order `can_thaw`
 runs them. The gate returns a single error code and stops at the first failure,
@@ -121,7 +121,7 @@ ran (`src/lib/gate.ts`). A refusal while authenticating the inputs, such as havi
 no credential at all, is shown separately from a policy denial: in that case none
 of the fund's rules were checked.
 
-## Present UC1
+## Present credential admission
 
 1. **`/operator`**: all four setup steps read from chain, and the fund's policy.
    Click **Allocate 25,000** for Lena. Token-2022 refuses: a frozen account cannot
@@ -158,7 +158,7 @@ owner-only permissions. Role screens are a presentation device, not production
 user authentication. The website binds to localhost and accepts actions only from
 the same local origin.
 
-## Present UC2
+## Present credential lifecycle
 
 Continue after Lena has been admitted and allocated MERID:
 
@@ -200,16 +200,16 @@ account reads and enforcement actions remain available. Actions do not read
 transaction history before submission. Refresh retries the optional timeline.
 No detection service or one-hour enforcement guarantee is provided.
 
-## Simulate a screening feed (UC3)
+## Simulate a screening feed
 
 `mise run screen <hit|delist|lift> <lena|mark>` plays a screening feed from the
 terminal, with the website running. It calls the gate's authorized status
 instruction and Token ACL freeze, signed by the fund operator's key, which is the
 authority in the mint's Token ACL config. It is a fixture, not a production adapter
-service. The `/compliance` screen from UC2 writes the same wallet block by hand; the
+service. The `/compliance` screen used in the lifecycle walkthrough writes the same wallet block by hand; the
 feed is the scripted path to it.
 
-After Lena is admitted (Present UC1, steps 1 to 4):
+After Lena is admitted (Present credential admission, steps 1 to 4):
 
 1. `mise run screen hit lena`: one transaction blocks her wallet and freezes her
    supplied token account. Refresh `/investor/lena`: the account is frozen, and the
@@ -228,7 +228,7 @@ she opens. The invalidation flag is preserved by every write. The script reads i
 and writes it back, so do not run it while a website action is in flight. Only the
 supplied token account freezes; discovering every account of a wallet is out of scope.
 
-## Present UC5
+## Present per-mint policy
 
 Issue Lena a current credential on `/issuer`, then open `/funds`. Request access
 to Meridian US. The gate denies the DE claim with `Claim · 13` and the
@@ -278,7 +278,7 @@ to fail chosen RPC calls. The tests seed a separate session under `.demo/e2e`.
   confirmation cannot be read, the outcome is confirmed by polling or reported
   as unconfirmed with its signature, never as rejected. A gate denial survives a
   failed read after it, and errors do not linger.
-- `tests/screening.spec.ts` runs the UC3 screening script against the same
+- `tests/screening.spec.ts` runs the screening script against the same
   session and checks, through the demo API, that a hit holds and freezes in one
   transaction, repeats and delistings send nothing, renewal cannot clear the
   hold, only a lift does, a lift reports whether the account stays frozen or
@@ -295,7 +295,7 @@ checks, SBF build, and surfnet integration suite.
 
 ## Scope
 
-The demo exposes UC1 admission, UC2 lifecycle controls, the UC3 simulated feed, and the UC5 two-fund fixture. It adds no automated
+The demo exposes admission, lifecycle controls, the simulated screening feed, and the two-fund fixture. It adds no automated
 monitoring, screening-feed integration, policy editing, issuer management, richer investor classifications, or wallet integration. The operator manually supplies the displayed account
 for freezing. Role screens remain local presentation controls, not production
 authentication. Active accounts are not automatically frozen when their

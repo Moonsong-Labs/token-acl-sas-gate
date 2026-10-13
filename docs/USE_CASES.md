@@ -5,8 +5,9 @@ account — i.e. receive and transact a regulated Token-2022 token — based on 
 Service (SAS) credential. Credentials are reusable, and subject to renewal, expiry and revocation.  
 Companions: `SCOPE.md` (scope, MVP boundary, success criteria) · `IMPLEMENTATION.md` (toolchain,  
 authoritative gate predicate §4, fixtures, test matrix, build order, risks).  
-**MVP = UC1 + UC2 + a second-mint policy fixture.** UC3–UC5 are the _reasons the state model is_  
-_shaped the way it is_; UC5's two-mint fixture is implemented; richer rules remain later extensions.
+The demo implements credential admission, credential lifecycle, screening blocks,
+and a second-mint policy fixture. Institutional onboarding and richer distribution
+rules remain later extensions.
 
 * * *
 
@@ -92,15 +93,15 @@ where the schema's issuance semantics explicitly mean "qualification passed"; an
 **block** applies. Authoritative predicate: `IMPLEMENTATION.md` §4.  
 Qualified-purchaser evidence is **not** an interchangeable alternative: Rule 506(c) accredited  
 investor and QP status answer different regulatory questions. QP belongs to the second, stricter  
-policy (UC5).  
+policy described in section 5.
 **Why.** _Business:_ removes the hand-maintained list as the control of record. Defensible claim  
 only: the gate **rejects permissionless admission without accepted evidence under the configured**  
 **policy** — mis-admission via bad attestations, stale thawed accounts or admin override remains  
 possible. _Engineering:_ proves the seam — extra metas, issuer allowlisting, schema matching,  
 predicates.  
-**MVP boundary.** UC1 establishes the **first fund and its admission policy**: one policy, one  
+**MVP boundary.** Credential admission establishes the **first fund and its admission policy**: one policy, one
 test issuer. The overall MVP then adds a **second mint as a deliberately simple policy fixture**  
-(UC5, `IMPLEMENTATION.md` §6) so that policy is the only variable. Reg S / offshore eligibility  
+(`IMPLEMENTATION.md` §6) so that policy is the only variable. Reg S / offshore eligibility
 stays out until its evidence and limits are specified.
 
 ## 2. Credential lifecycle — renewal, expiry, revocation, re-gating — _demo centrepiece_
@@ -185,13 +186,13 @@ secondary buyer never saw.
 mint-specific **claim-value** predicates. Same credential passes the MMF, fails the bond. Investor  
 categories are **membership in an explicitly accepted set** — **not** `class ≥ min`; there is no  
 universal numerical ranking of investor types.  
-**On the allowlist.** UC1 rejects a whitelist as the _control of record_; UC5's list is **optional**  
+**On the allowlist.** Credential admission rejects a whitelist as the _control of record_; an offering-specific list is **optional**
 **product-specific approval layered on top** for gating one offering to a named cohort. Default  
 posture: shared attestations + per-mint predicates, **no** wallet list.  
 **Why.** _Business:_ matches how issuers think about a product shelf, and shows credentials are  
 shared while policies are per-asset. _Engineering:_ one program, many mints, independent policy  
 accounts — the multi-tenant production shape.  
-**MVP vs extension.** MVP ships **two mints, one fixture** (`IMPLEMENTATION.md` §6): same schema,  
+**MVP vs extension.** MVP ships **two mints, one fixture** (`IMPLEMENTATION.md` §6): same schema,
 same issuer, same validity, same claim value — **only the predicate differs**. Rich jurisdiction  
 and classification rules, and the qualified-purchaser variant, are later. The EEA/UK split is a  
 **hypothetical policy example**, not a legal classification.
@@ -289,7 +290,7 @@ the mint predicate. Nothing is retained from that read.
 blocks, and any invalidation records that cannot be derived from evidence.  
 **Supporting documents:** **not stored by the gate program, the SAS schemas this project uses, or**  
 **the demo tooling.** Evidence storage at the **credential provider** is outside this project — and  
-UC4's reliance model explicitly anticipates needing access to it.  
+the institutional onboarding model explicitly anticipates needing access to it.
 Claims under evaluation (wallet-linked jurisdiction, investor classification) are sensitive in  
 themselves, so this is not "no sensitive attributes". Before launch, state exactly which claims are  
 treated as publicly readable on-chain and which stay off-chain.

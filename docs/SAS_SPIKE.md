@@ -145,9 +145,9 @@ prefix + `"DE"`), confirming the byte layout in §2 end-to-end. Our decoder read
 field of the account SAS actually wrote. The probe also reads the SAS-owned schema, checks its
 single `String` field is named `jurisdiction`, and decodes the stored claim value as `DE`.
 
-**On-chain validation now runs in the UC1 callback.** The integration suite prints
+**On-chain validation now runs in the credential admission callback.** The integration suite prints
 callback CU and total Token ACL CU for a real thaw. See `ADMISSION.md` and
-`uc1_admission_and_policy_governance` in `tests/e2e.rs`. The original spike decoder
+`admission_and_policy_governance` in `tests/e2e.rs`. The original spike decoder
 remains an independent host-side layout oracle.
 
 **Provenance (reproducibility) — resolved by the surfnet harness (PR #4).** §2–§4 are read
@@ -159,7 +159,7 @@ suite. (The pin guarantees reproducibility, not equivalence to `5b64cf0`.)
 
 ---
 
-## 6. Test-harness implications (feed into the UC1 build)
+## 6. Test-harness implications (feed into the credential admission build)
 
 - **Instructions are hand-built (`tests/support/sas_ix.rs`).** The first-party
   `solana-attestation-service-client` targets the solana 2.x stack and cannot interoperate
@@ -185,7 +185,7 @@ suite. (The pin guarantees reproducibility, not equivalence to `5b64cf0`.)
 
 ## 7. Subject binding — DECISION LOCKED
 
-SAS has **no `subject` field**, so UC1's "attestation subject matches the current
+SAS has **no `subject` field**, so credential admission's "attestation subject matches the current
 token-account owner" (`IMPLEMENTATION.md` §4.3) needs a chosen field to carry the subject
 identity.
 

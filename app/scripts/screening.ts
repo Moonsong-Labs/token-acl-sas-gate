@@ -1,4 +1,4 @@
-// Simulated screening feed (UC3). A CLI fixture that calls the gate's authorized
+// Simulated screening feed (screening blocks). A CLI fixture that calls the gate's authorized
 // status instruction and Token ACL freeze, signed by the fund operator, the
 // authority recorded in the mint's Token ACL config. It is not an adapter service.
 //
