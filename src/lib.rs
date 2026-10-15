@@ -77,6 +77,9 @@ fn authority(
     mint: &AccountView,
     config: &AccountView,
 ) -> ProgramResult {
+    // The fund operator is the mint's current Token ACL authority. Read its
+    // config on every update so an authority rotation also changes who may
+    // configure this gate's policy and compliance flags.
     if !signer.is_signer() {
         return Err(ProgramError::MissingRequiredSignature);
     }
@@ -162,6 +165,8 @@ fn configure(program: &Address, accounts: &mut [AccountView], data: &[u8]) -> Pr
         return Err(GateError::Address.into());
     }
     let policy = Policy::decode(data)?;
+    // Each mint chooses its own credential, schema version, regions and KYC
+    // age limit. The same SAS evidence can therefore qualify for several funds.
     owner(schema, &SAS)?;
     state::decode_schema(&schema.try_borrow()?, schema.address())?
         .validate(schema.address(), &policy)?;
@@ -209,6 +214,9 @@ fn status(
     if flags.is_some() {
         authority(program, auth, mint, config)?;
     }
+    // Anyone may initialize a clear record, but only the fund operator may
+    // change its flags. Reusing a record preserves holds across KYC renewal.
+    // These flags deny a later thaw; setting them does not freeze an account.
     if record.owner() == &pinocchio_system::ID {
         create(program, payer, record, &seeds, state::STATUS_LEN)?;
         record.try_borrow_mut()?.copy_from_slice(&[2, 0, 0]);
@@ -279,6 +287,10 @@ fn immutable_token(data: &[u8], mint: &Address, subject: &Address) -> ProgramRes
     }
     Ok(())
 }
+// Token ACL calls this predicate during permissionless thaw and performs the
+// Token-2022 thaw only after success. We read current evidence without copying
+// it into gate state. Transfers between active accounts do not call this gate;
+// expiry or SAS revocation requires an operator freeze to stop an active account.
 fn can_thaw(program: &Address, accounts: &[AccountView]) -> ProgramResult {
     let [
         _caller,
@@ -299,6 +311,8 @@ fn can_thaw(program: &Address, accounts: &[AccountView]) -> ProgramResult {
     };
     owner(token, &TOKEN)?;
     owner(mint, &TOKEN)?;
+    // Token ACL supplies this flag for the thaw context. The gate makes an
+    // admission decision; it neither transfers tokens nor implements freezing.
     derived(flag, &[b"FLAG_ACCOUNT", token.address().as_ref()], &ACL)?;
     owner(flag, &ACL)?;
     if flag.try_borrow()?.as_ref() != [1] {
@@ -323,6 +337,8 @@ fn can_thaw(program: &Address, accounts: &[AccountView]) -> ProgramResult {
     let schema_data = schema.try_borrow()?;
     let decoded_schema = state::decode_schema(&schema_data, schema.address())?;
     // Decode evidence and authenticate its address before any policy decision.
+    // SAS owns genuine attestations and closes them on revocation. Missing or
+    // revoked evidence cannot pass this decoding step as a live SAS account.
     let evidence_data = evidence.try_borrow()?;
     let attestation = Attestation::decode(evidence.owner(), &evidence_data)?;
     derived(
@@ -337,6 +353,8 @@ fn can_thaw(program: &Address, accounts: &[AccountView]) -> ProgramResult {
     )?;
     let wallet_flags = read_status(program, mint.address(), subject.address(), wallet_status)?;
     let token_flags = read_status(program, mint.address(), token.address(), token_status)?;
+    // Both records must exist. A wallet hold applies across its accounts for
+    // this mint; an account hold applies only to the supplied token account.
     if wallet_flags[0] != 0 || token_flags[0] != 0 {
         return Err(GateError::Blocked.into());
     }
@@ -345,11 +363,16 @@ fn can_thaw(program: &Address, accounts: &[AccountView]) -> ProgramResult {
         return Err(GateError::Schema.into());
     }
     immutable_token(&token.try_borrow()?, mint.address(), subject.address())?;
+    // SAS has no subject field, so the issuer uses nonce as the investor wallet.
+    // Bind evidence to the current token owner, not the caller, so relayers may
+    // request admission. ImmutableOwner prevents moving admission to a new owner.
     // SAS token_account holds the tokenized credential; it does not scope admission.
     if attestation.nonce != *subject.address() {
         return Err(GateError::Subject.into());
     }
     let now = Clock::get()?.unix_timestamp;
+    // Credential validity and KYC age are separate checks. A live attestation
+    // can still contain KYC older than the fund permits.
     if !state::time_valid(attestation.expiry, now) {
         return Err(GateError::Expired.into());
     }
@@ -357,11 +380,17 @@ fn can_thaw(program: &Address, accounts: &[AccountView]) -> ProgramResult {
     let claim = state::Claim::decode(attestation.data)?;
     claim.validate_age(policy.max_age, now)?;
     if wallet_flags[1] != 0 || token_flags[1] != 0 {
+        // Replacement evidence cannot clear an operator's invalidation flag.
         return Err(GateError::Invalidated.into());
     }
+    // The policy trusts the credential authority's authorized issuers. SAS
+    // enforces issuance rights; pinning the attestation signer here would break
+    // signer rotation. Trust is scoped to the credential, not one issuer key.
     if attestation.credential != policy.credential {
         return Err(GateError::Issuer.into());
     }
+    // Genuine, current KYC can still fail this fund's jurisdiction rule.
+    // Return the first denial so the demo can name the check that failed.
     claim.validate_values(&policy)
 }
 

@@ -11,6 +11,9 @@ impl SplDiscriminate for Thaw {
     const SPL_DISCRIMINATOR: ArrayDiscriminator = ArrayDiscriminator::new(THAW);
 }
 pub fn bytes(program: &Address, mint: &Address, policy: &Policy) -> Result<Vec<u8>, ProgramError> {
+    // Token ACL resolves this list before calling the gate. Select evidence
+    // from the mint's policy and the token account's current owner, rather than
+    // letting the caller choose another investor's credential.
     let literal = |bytes: &[u8]| Seed::Literal {
         bytes: bytes.to_vec(),
     };
@@ -25,6 +28,9 @@ pub fn bytes(program: &Address, mint: &Address, policy: &Policy) -> Result<Vec<u
         fixed(Address::find_program_address(&[b"policy", mint.as_ref()], program).0)?,
         fixed(policy.schema)?,
         fixed(SAS)?,
+        // SAS derives evidence from credential + schema + nonce. Account 6 is
+        // the policy, 7 the schema, 8 SAS, and 3 the owner used as nonce. The
+        // regulated mint is absent from these seeds, allowing credential reuse.
         ExtraAccountMeta::new_external_pda_with_seeds(
             8,
             &[
