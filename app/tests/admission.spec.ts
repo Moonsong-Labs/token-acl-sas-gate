@@ -180,9 +180,9 @@ test("admission, credential lifecycle, sponsor freeze and block precedence", asy
   expect(markFunds.second.investors[1].credential).toEqual(markFunds.investors[1].credential);
   expect(await tokenState(markFunds.investors[1].token)).toBe(2);
   expect(await tokenState(markFunds.second.investors[1].token)).toBe(1);
-  await page.screenshot({ path: "/tmp/doors-funds-desktop.png", fullPage: true });
+  await page.screenshot({ path: "/tmp/token-acl-sas-gate-funds-desktop.png", fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.screenshot({ path: "/tmp/doors-funds-phone.png", fullPage: true });
+  await page.screenshot({ path: "/tmp/token-acl-sas-gate-funds-phone.png", fullPage: true });
   await page.setViewportSize({ width: 1280, height: 720 });
   await page.goto("/investor/mark");
   await page.getByRole("button", { name: "Request access" }).click();

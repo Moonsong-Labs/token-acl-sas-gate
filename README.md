@@ -1,4 +1,4 @@
-# doors-of-durin
+# token-acl-sas-gate
 
 A Solana [Token ACL](https://github.com/solana-foundation/token-acl) (sRFC37) gate
 program, built with [Pinocchio](https://docs.rs/pinocchio/0.11.2), that admits
@@ -164,7 +164,7 @@ to format the Rust sources. See [CONTRIBUTING.md](CONTRIBUTING.md) for Git hooks
 and the shared review and contribution workflow.
 
 To build the deployable artifact separately, run `mise run build`.
-The deployable program is written to `target/deploy/doors_of_durin.so`. This is an
+The deployable program is written to `target/deploy/token_acl_sas_gate.so`. This is an
 on-chain library, not a command-line executable; `cargo run` does not apply.
 Unit tests exercise decoding and validation directly. Integration tests execute
 the deployed SBF program through Token ACL.
@@ -243,7 +243,7 @@ setup and admission flow are in `tests/support/admission.rs`.
 ## Reuse the gate in another project
 
 The gate is independent of the demo website and its fixture wallets. Build it
-with `mise run build`, deploy `target/deploy/doors_of_durin.so` at your chosen
+with `mise run build`, deploy `target/deploy/token_acl_sas_gate.so` at your chosen
 program address, and configure each mint through Token ACL. Derive gate PDAs
 with that deployment address. One deployment can serve multiple mints, each
 with its own policy and status records.
@@ -258,11 +258,11 @@ dependency pinned to a reviewed commit:
 
 ```toml
 [dependencies]
-doors-of-durin = { git = "https://github.com/Moonsong-Labs/doors-of-durin", rev = "<reviewed-commit-sha>", features = ["no-entrypoint"] }
+token-acl-sas-gate = { git = "https://github.com/Moonsong-Labs/token-acl-sas-gate", rev = "<reviewed-commit-sha>", features = ["no-entrypoint"] }
 ```
 
 `no-entrypoint` suppresses the Solana entrypoint export and leaves
-`doors_of_durin::process_instruction` available. An embedding program must pass
+`token_acl_sas_gate::process_instruction` available. An embedding program must pass
 its own program address and configure Token ACL to select that address.
 
 The gate uses the fixed SAS, Token ACL, and Token-2022 program IDs exported as

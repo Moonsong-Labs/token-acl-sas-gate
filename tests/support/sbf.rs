@@ -18,7 +18,7 @@ const POLL_INTERVAL: Duration = Duration::from_millis(250);
 const BUILD_TIMEOUT: Duration = Duration::from_secs(600);
 const VERSION_TIMEOUT: Duration = Duration::from_secs(10);
 
-/// Path to `doors_of_durin.so`, building it on first call.
+/// Path to `token_acl_sas_gate.so`, building it on first call.
 ///
 /// # Panics
 ///
@@ -58,11 +58,11 @@ fn build() -> PathBuf {
             .args(["--tools-version", &sbf_tools_version])
             .args(["--", "--locked"]),
         &logs,
-        "build-doors-of-durin",
+        "build-token-acl-sas-gate",
         BUILD_TIMEOUT,
     );
 
-    let binary = out.join("doors_of_durin.so");
+    let binary = out.join("token_acl_sas_gate.so");
     assert!(
         binary.is_file(),
         "cargo build-sbf reported success but {} is missing",

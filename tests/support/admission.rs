@@ -1,6 +1,5 @@
 //! Real SAS issuance and Token-2022/ACL setup for credential admission.
 use super::{Harness, Outcome, ids, sas_ix};
-use doors_of_durin::{metas, state::Policy};
 use solana_instruction::{AccountMeta as Meta, Instruction};
 use spl_token_2022_interface::{
     extension::{
@@ -14,6 +13,7 @@ use token_acl_client::{
     accounts::{FlagAccount, MintConfig},
     instructions::*,
 };
+use token_acl_sas_gate::{metas, state::Policy};
 
 pub const SYSTEM: Pubkey = Pubkey::from_str_const("11111111111111111111111111111111");
 pub const TOKEN: Pubkey = Pubkey::from_str_const("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb");
@@ -152,7 +152,7 @@ impl Admission {
                 &[fixture.configure(&fixture.investor.pubkey(), &fixture.policy)],
                 &[fixture.harness.payer(), &fixture.investor],
             ),
-            doors_of_durin::GateError::Unauthorized,
+            token_acl_sas_gate::GateError::Unauthorized,
         );
         // A lamport donation must not prevent the authority from initializing a PDA.
         fixture

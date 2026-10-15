@@ -81,7 +81,7 @@ export function Chrome({
     >
       <span style={{ display: "flex", alignItems: "center", gap: 9 }}>
         <Mark />
-        <span style={{ fontWeight: 600, fontSize: 15 }}>Doors of Durin</span>
+        <span style={{ fontWeight: 600, fontSize: 15 }}>Token ACL SAS Gate</span>
         <span
           style={{
             fontSize: 12,

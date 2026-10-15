@@ -308,7 +308,7 @@ async fn sas_issue_decode_and_lifecycle() {
     );
 }
 
-fn gate_denied(outcome: &Outcome, error: doors_of_durin::GateError) {
+fn gate_denied(outcome: &Outcome, error: token_acl_sas_gate::GateError) {
     assert!(outcome.reached(&ids::GATE), "gate not reached: {outcome:?}");
     assert_eq!(
         outcome.error,
@@ -323,8 +323,8 @@ fn gate_denied(outcome: &Outcome, error: doors_of_durin::GateError) {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "builds the program with cargo build-sbf; run via `mise run integration`"]
 async fn admission_and_policy_governance() {
-    use doors_of_durin::GateError;
     use support::admission::{Admission, list_pda, policy_pda, status_pda};
+    use token_acl_sas_gate::GateError;
     let f = Admission::start().await;
     let payer = f.harness.payer().pubkey();
     assert_eq!(f.token_state(), 2, "default state must be frozen");
@@ -455,8 +455,8 @@ async fn admission_and_policy_governance() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "builds the program with cargo build-sbf; run via `mise run integration`"]
 async fn fail_closed_account_matrix() {
-    use doors_of_durin::GateError;
     use support::admission::{Admission, SYSTEM, list_pda, policy_pda, status_pda};
+    use token_acl_sas_gate::GateError;
     let mut f = Admission::start().await;
     let payer = f.harness.payer().pubkey();
     let evidence = f.harness.rpc().get_account(&f.evidence).unwrap();
@@ -580,10 +580,10 @@ async fn fail_closed_account_matrix() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "builds the program with cargo build-sbf; run via `mise run integration`"]
 async fn clock_boundaries_and_discovery() {
-    use doors_of_durin::GateError;
     use solana_rpc_client_types::request::RpcRequest;
     use solana_transaction::Transaction;
     use support::admission::{Admission, list_pda};
+    use token_acl_sas_gate::GateError;
     let f = Admission::start().await;
     let payer = f.harness.payer().pubkey();
     // Resolve the standard metas via the actual SDK, not our fixture's fixed list.
@@ -899,12 +899,12 @@ async fn rejects_genuine_but_unaccepted_evidence() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "builds the program with cargo build-sbf; run via `mise run integration`"]
 async fn governance_follows_authority_rotation_and_blocks_take_precedence() {
-    use doors_of_durin::GateError;
     use support::admission::Admission;
     use token_acl_client::{
         accounts::MintConfig,
         instructions::{SetAuthority, SetAuthorityInstructionArgs},
     };
+    use token_acl_sas_gate::GateError;
     let f = Admission::start().await;
     let payer = f.harness.payer().pubkey();
     let successor_fund_operator = Keypair::new();
@@ -963,9 +963,9 @@ async fn governance_follows_authority_rotation_and_blocks_take_precedence() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "builds the program with cargo build-sbf; run via `mise run integration`"]
 async fn revocation_freeze_renewal_and_block_precedence() {
-    use doors_of_durin::GateError;
     use spl_token_2022_interface::instruction as token;
     use support::admission::{Admission, TOKEN};
+    use token_acl_sas_gate::GateError;
     let mut f = Admission::start().await;
     let payer = f.harness.payer().pubkey();
     let supplied = f.token;
@@ -1075,8 +1075,8 @@ async fn revocation_freeze_renewal_and_block_precedence() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "builds the program with cargo build-sbf; run via `mise run integration`"]
 async fn wallet_invalidation_survives_reissuance_until_authorized_clear() {
-    use doors_of_durin::GateError;
     use support::admission::Admission;
+    use token_acl_sas_gate::GateError;
     let f = Admission::start().await;
     let payer = f.harness.payer().pubkey();
     f.send_thaw().assert_success();
@@ -1112,8 +1112,8 @@ async fn wallet_invalidation_survives_reissuance_until_authorized_clear() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "builds the program with cargo build-sbf; run via `mise run integration`"]
 async fn sanctions_hit_blocks_and_freezes_until_authorized_review() {
-    use doors_of_durin::GateError;
     use support::admission::Admission;
+    use token_acl_sas_gate::GateError;
     let f = Admission::start().await;
     let payer = f.harness.payer().pubkey();
     let investor = f.investor.pubkey();
@@ -1206,7 +1206,7 @@ async fn shared_evidence_and_independent_mint_policies() {
         status_pda(&first_mint, &f.investor.pubkey()),
         status_pda(&second_mint, &f.investor.pubkey())
     );
-    gate_denied(&f.send_thaw(), doors_of_durin::GateError::Claim);
+    gate_denied(&f.send_thaw(), token_acl_sas_gate::GateError::Claim);
     assert_eq!(f.token_state(), 2);
     assert_eq!(
         f.harness.rpc().get_account(&first_token).unwrap().data[108],
@@ -1231,7 +1231,7 @@ async fn shared_evidence_and_independent_mint_policies() {
     f.harness
         .send(&[f.configure(&payer, &f.policy)], &[f.harness.payer()])
         .assert_success();
-    gate_denied(&f.send_thaw(), doors_of_durin::GateError::Blocked);
+    gate_denied(&f.send_thaw(), token_acl_sas_gate::GateError::Blocked);
     f.harness
         .send(
             &[f.status(&f.investor.pubkey(), Some([0, 0]), &payer)],

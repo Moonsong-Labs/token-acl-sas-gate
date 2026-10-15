@@ -13,7 +13,7 @@ export const TOKEN_ACL: Address = address(
 );
 
 export const PROGRAMS: ReadonlyArray<{ name: string; id: Address }> = [
-  { name: "Gate (doors-of-durin)", id: GATE },
+  { name: "Gate (token-acl-sas-gate)", id: GATE },
   { name: "Solana Attestation Service", id: SAS },
   { name: "Token ACL", id: TOKEN_ACL },
 ];
