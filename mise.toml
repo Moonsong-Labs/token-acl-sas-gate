@@ -55,7 +55,7 @@ description = "Run all push gates, including the SBF build"
 run = "prek run --all-files --stage pre-push"
 
 [tasks.build]
-description = "Build target/deploy/doors_of_durin.so with the pinned SBF toolchain"
+description = "Build target/deploy/token_acl_sas_gate.so with the pinned SBF toolchain"
 # Separate target dir: this compiler's proc-macro ABI differs from the host's.
 env = { CARGO_TARGET_DIR = "target/sbf" }
 run = 'cargo build-sbf --tools-version "$SBF_TOOLS_VERSION" --sbf-out-dir target/deploy -- --locked'

@@ -1,5 +1,5 @@
 [package]
-name = "doors-of-durin"
+name = "token-acl-sas-gate"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.94"

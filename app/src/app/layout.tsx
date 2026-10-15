@@ -3,7 +3,7 @@ import { DemoProvider } from "@/lib/client";
 import "./globals.css";
 
 export const metadata = {
-  title: "Doors of Durin — Demo",
+  title: "Token ACL SAS Gate — Demo",
   description: "Token ACL gate demo, driven against a local surfnet.",
 };
 

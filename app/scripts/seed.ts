@@ -47,7 +47,7 @@ async function main() {
   for (const [id, file, name] of [
     [SAS, "../tests/fixtures/programs/sas.so", "SAS"],
     [TOKEN_ACL, "../tests/fixtures/programs/token_acl.so", "TOKEN_ACL"],
-    [GATE, "../target/deploy/doors_of_durin.so", "GATE"],
+    [GATE, "../target/deploy/token_acl_sas_gate.so", "GATE"],
   ] as const) {
     const binary = await readFile(file);
     if (name !== "GATE") {

@@ -2019,30 +2019,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "doors-of-durin"
-version = "0.1.0"
-dependencies = [
- "pinocchio",
- "pinocchio-system",
- "serde_json",
- "sha2 0.9.9",
- "solana-address 2.6.1",
- "solana-instruction 3.4.1",
- "solana-msg 3.1.0",
- "solana-rpc-client-types",
- "solana-system-interface 3.2.0",
- "solana-transaction 4.1.6",
- "solana-transaction-error 3.3.2",
- "spl-discriminator",
- "spl-tlv-account-resolution",
- "spl-token-2022-interface 3.1.1",
- "surfpool-sdk",
- "token-acl-client",
- "token-acl-interface",
- "tokio",
-]
-
-[[package]]
 name = "downcast"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -10644,6 +10620,30 @@ dependencies = [
  "spl-discriminator",
  "spl-tlv-account-resolution",
  "thiserror 2.0.20",
+]
+
+[[package]]
+name = "token-acl-sas-gate"
+version = "0.1.0"
+dependencies = [
+ "pinocchio",
+ "pinocchio-system",
+ "serde_json",
+ "sha2 0.9.9",
+ "solana-address 2.6.1",
+ "solana-instruction 3.4.1",
+ "solana-msg 3.1.0",
+ "solana-rpc-client-types",
+ "solana-system-interface 3.2.0",
+ "solana-transaction 4.1.6",
+ "solana-transaction-error 3.3.2",
+ "spl-discriminator",
+ "spl-tlv-account-resolution",
+ "spl-token-2022-interface 3.1.1",
+ "surfpool-sdk",
+ "token-acl-client",
+ "token-acl-interface",
+ "tokio",
 ]
 
 [[package]]
