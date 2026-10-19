@@ -8,6 +8,9 @@ investors to a regulated Token-2022 token based on a
 allows the thaw only when the token account's owner holds current SAS evidence
 that meets the mint's policy.
 
+> **⚠️ This code has not been audited. It is a reference implementation for
+> local and test networks, and must not be used in production.**
+
 ![Live demo: Lena R.'s account admitted, with every gate check passed](docs/images/screenshots/06-investor-lena-admitted.png)
 
 *The demo running against a local surfnet: Lena R.'s account was admitted
