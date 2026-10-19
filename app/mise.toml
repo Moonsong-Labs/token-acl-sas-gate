@@ -46,3 +46,7 @@ run = "npm run typecheck"
 [tasks.e2e]
 description = "Build the website and test admission, lifecycle, and screening against an isolated surfnet"
 run = "npm run test:e2e"
+
+[tasks.screenshots]
+description = "Build the website and regenerate the README screenshots against an isolated surfnet"
+run = "npm run build && npx playwright test --config playwright.screenshots.config.ts"

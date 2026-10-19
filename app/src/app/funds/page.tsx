@@ -21,7 +21,7 @@ export default function Funds() {
   return (
     <Screen role="investor" roleLabel={holder.name}>
       <ActionError />
-      <PageTitle eyebrow="Use case 5" title="Two funds, one credential" />
+      <PageTitle eyebrow="Investor" title="Two funds, one credential" />
       <p style={{ maxWidth: 720, color: "var(--ink2)", lineHeight: 1.6, marginBottom: 20 }}>
         One credential per investor, shared across both funds. EU Retail accepts Germany
         and France; Meridian US accepts the United States. Lena qualifies for EU Retail,

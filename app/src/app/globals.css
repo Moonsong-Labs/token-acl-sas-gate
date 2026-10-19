@@ -1,7 +1,7 @@
 /*
- * Design tokens for the demo, taken from the screen mockups.
+ * Design tokens for the demo.
  *
- * `--muted` is #5B626D rather than the mockups' first-draft #727A85: that value
+ * `--muted` is #5B626D rather than the first draft's #727A85: that value
  * measured 3.95:1 on --paper and 4.34:1 on --panel, under the 4.5:1 WCAG AA
  * floor for the 11-13px captions it is used for. #5B626D gives 5.6:1 / 6.2:1.
  */
