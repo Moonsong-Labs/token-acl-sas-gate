@@ -109,8 +109,8 @@ issuance options. Omitted issuance options normalize to today and one year.
 | `/funds` | 9 · Two funds, one credential | Investor |
 | `/status` | Surfnet, programs and session | — |
 
-The numbered screens follow the credential admission mockups. The credential authority screen is
-not in the mockups; it shows the role split above. Withdrawal, compliance
+The numbers match the overview's screen numbers. The credential authority
+screen is unnumbered; it shows the role split above. Withdrawal, compliance
 actions, and the access timeline implement the credential lifecycle.
 Screen 9 shows independent policies for two mints.
 
