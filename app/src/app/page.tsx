@@ -101,7 +101,7 @@ export default function Overview() {
       >
         <section style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           <div>
-            <div className="lbl">Live demo · use cases 1, 2 and 5</div>
+            <div className="lbl">Live demo</div>
             <h1
               className="serif"
               style={{ fontSize: 33, fontWeight: 700, lineHeight: 1.1, letterSpacing: "-.01em" }}
